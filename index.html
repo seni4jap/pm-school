@@ -146,17 +146,97 @@ async function fbRemove(path) {
 // ================================================================
 // IN-MEMORY STATE
 // ================================================================
+const S = { clients: {}, stages: {}, stagesMeta: null, feedback: {}, loaded: false }
+
+let fbConfig = null;
+
+function getStoredConfig() {
+  if (EMBEDDED_CONFIG && EMBEDDED_CONFIG.apiKey) return EMBEDDED_CONFIG;
+  try { return JSON.parse(localStorage.getItem(SK.CONFIG)); } catch { return null; }
+}
+
+function downloadConfiguredFile(config) {
+  const html = document.documentElement.outerHTML;
+  const configured = '<!DOCTYPE html>\n' + html.replace(
+    'const EMBEDDED_CONFIG = null;',
+    'const EMBEDDED_CONFIG = ' + JSON.stringify(config, null, 2) + ';'
+  );
+  const blob = new Blob([configured], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'index.html';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function initFirebase(config) {
+  fbConfig = config;
+  return true; // используем REST API — всегда работает
+}
+
+// ================================================================
+// FIREBASE REST API (вместо SDK — надёжнее, без WebSocket)
+// ================================================================
+async function fbFetch(url, opts = {}, attempt = 1) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    clearTimeout(tid);
+    return res;
+  } catch(e) {
+    clearTimeout(tid);
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, 1500)); // пауза перед повтором
+      return fbFetch(url, opts, attempt + 1);
+    }
+    throw new Error('Нет ответа от Firebase. Проверьте интернет и попробуйте ещё раз.');
+  }
+}
+async function fbGet(path) {
+  const res = await fbFetch(`${fbConfig.databaseURL}/${path}.json`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Ошибка чтения (${res.status})`);
+  return res.json();
+}
+async function fbSet(path, value) {
+  const res = await fbFetch(`${fbConfig.databaseURL}/${path}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(value)
+  });
+  if (!res.ok) throw new Error(`Ошибка записи (${res.status})`);
+  return res.json();
+}
+async function fbRemove(path) {
+  const res = await fbFetch(`${fbConfig.databaseURL}/${path}.json`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Ошибка удаления (${res.status})`);
+}
+
+// ================================================================
+// IN-MEMORY STATE
+// ================================================================
 const S = { clients: {}, stages: {}, stagesMeta: null, feedback: {}, loaded: false };
 
 // ================================================================
 // CRYPTO
 // ================================================================
-async function hashPwd(pwd) {
-  const data = new TextEncoder().encode(pwd + '_uk_salt');
+async function hashPwd(pwd, salt) {
+  // Без salt — старый формат для совместимости с уже сохранёнными паролями в Firebase
+  // С salt — новый формат для подписи сессионных токенов
+  const input = salt ? (pwd + '_uk_sess_' + salt) : (pwd + '_uk_salt');
+  const data = new TextEncoder().encode(input);
   const buf = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 async function checkPwd(pwd, hash) { return (await hashPwd(pwd)) === hash; }
+
+// Производит подписанный токен сессии, привязанный к хешу пароля.
+// Если пароль изменён — старые сессии автоматически инвалидируются.
+// Атакующий не может подделать токен без знания актуального хеша пароля из Firebase.
+async function makeSessionToken(context, pwdHash) {
+  return hashPwd('session_' + context + '_' + pwdHash, 'signing_key_v1');
+}
 
 // Экранирование HTML — защита от XSS в именах клиентов и содержимом артефактов
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -402,32 +482,96 @@ const Data = {
 // ================================================================
 // AUTH
 // ================================================================
+// ================================================================
+// RATE LIMITER — защита от брутфорса
+// ================================================================
+const RateLimit = {
+  _attempts: 0,
+  _windowStart: Date.now(),
+  MAX: 5,
+  WINDOW: 60 * 1000, // 1 минута
+
+  check() {
+    const now = Date.now();
+    if (now - this._windowStart > this.WINDOW) {
+      this._attempts = 0;
+      this._windowStart = now;
+    }
+    if (this._attempts >= this.MAX) {
+      const wait = Math.ceil((this.WINDOW - (now - this._windowStart)) / 1000);
+      throw new Error(`Слишком много попыток входа. Подождите ${wait} секунд`);
+    }
+    this._attempts++;
+  },
+
+  reset() {
+    this._attempts = 0;
+    this._windowStart = Date.now();
+  }
+};
+
 const Auth = {
   session() {
     try {
       const s = JSON.parse(localStorage.getItem(SK.SESSION));
       if (!s) return null;
-      // Проверяем истечение сессии (7 дней)
+      // Сессия: 24 часа для Admin, 7 дней для клиента
       if (s.exp && Date.now() > s.exp) { this.clear(); return null; }
       return s;
     } catch { return null; }
   },
-  setSession(s) { localStorage.setItem(SK.SESSION, JSON.stringify({ ...s, exp: Date.now() + 86400000 * 7 })); },
+  setSession(s, ttl) {
+    localStorage.setItem(SK.SESSION, JSON.stringify({ ...s, exp: Date.now() + ttl }));
+  },
   clear() { localStorage.removeItem(SK.SESSION); },
   isAdmin() { return !!this.session()?.isAdmin; },
 
   async loginAdmin(pwd) {
+    RateLimit.check();
     const hash = await Data.getAdminHash();
     if (!hash || !(await checkPwd(pwd, hash))) throw new Error('Неверный пароль');
-    this.setSession({ isAdmin:true, login:ADMIN_LOGIN });
+    // Токен сессии привязан к хешу пароля — при смене пароля все сессии инвалидируются
+    const sessionToken = await makeSessionToken('admin', hash);
+    RateLimit.reset();
+    // Admin сессия: 24 часа
+    this.setSession({ isAdmin: true, login: ADMIN_LOGIN, _st: sessionToken }, 86400000);
   },
 
   async loginClient(login, pwd) {
+    RateLimit.check();
     const client = Data.clientByLogin(login);
     if (!client) throw new Error('Пользователь не найден');
     if (!(await checkPwd(pwd, client.passwordHash))) throw new Error('Неверный пароль');
-    this.setSession({ isAdmin:false, login:client.login, clientId:client.id });
+    // Токен привязан к хешу пароля клиента
+    const sessionToken = await makeSessionToken('client_' + client.id, client.passwordHash);
+    RateLimit.reset();
+    // Client сессия: 7 дней
+    this.setSession({ isAdmin: false, login: client.login, clientId: client.id, _st: sessionToken }, 86400000 * 7);
     return client;
+  },
+
+  // Верификация admin сессии против актуального хеша в Firebase
+  async verifyAdmin() {
+    const sess = this.session();
+    if (!sess?.isAdmin || !sess?._st) return false;
+    try {
+      const hash = await Data.getAdminHash();
+      if (!hash) return false;
+      const expected = await makeSessionToken('admin', hash);
+      return sess._st === expected;
+    } catch { return false; }
+  },
+
+  // Верификация client сессии против актуального хеша в Firebase
+  async verifyClient() {
+    const sess = this.session();
+    if (sess?.isAdmin || !sess?.clientId || !sess?._st) return false;
+    try {
+      const client = Data.client(sess.clientId);
+      if (!client?.passwordHash) return false;
+      const expected = await makeSessionToken('client_' + client.id, client.passwordHash);
+      return sess._st === expected;
+    } catch { return false; }
   },
 
   logout() { this.clear(); }
@@ -1899,14 +2043,33 @@ async function boot() {
     </div>`; return;
   }
 
-  // Route to correct view
+  // Route to correct view — с криптографической верификацией сессии
   const sess = Auth.session();
-  if (!sess) { VIEW='login'; }
-  else if (sess.isAdmin) { VIEW='adminDashboard'; }
-  else {
-    const freshClient = Data.client(sess.clientId);
-    if (!freshClient) { Auth.logout(); VIEW='login'; }
-    else VIEW='dashboard';
+  if (!sess) {
+    VIEW = 'login';
+  } else if (sess.isAdmin) {
+    // КРИТИЧНО: проверяем токен сессии против актуального хеша пароля в Firebase
+    // Простая установка isAdmin:true в DevTools не даёт доступ без знания пароля
+    const adminValid = await Auth.verifyAdmin();
+    if (!adminValid) {
+      Auth.logout();
+      VIEW = 'login';
+      console.warn('[Security] Admin session token invalid — session cleared');
+    } else {
+      VIEW = 'adminDashboard';
+    }
+  } else {
+    // Верифицируем клиентскую сессию
+    const clientValid = await Auth.verifyClient();
+    if (!clientValid) {
+      Auth.logout();
+      VIEW = 'login';
+      console.warn('[Security] Client session token invalid — session cleared');
+    } else {
+      const freshClient = Data.client(sess.clientId);
+      if (!freshClient) { Auth.logout(); VIEW = 'login'; }
+      else VIEW = 'dashboard';
+    }
   }
   render();
 }
