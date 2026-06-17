@@ -76,7 +76,7 @@ const DEFAULT_STAGES = [
 // Этот объект заполняется автоматически при скачивании настроенного файла.
 // Не редактируйте вручную — используйте мастер настройки.
 // ================================================================
-const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"}; // <-- сюда вставляется конфиг при генерации файла
+const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"};
 
 let fbConfig = null;
 
@@ -253,6 +253,13 @@ const Data = {
     await fbSet(`stagesMeta/${id}`, meta);
     await fbSet(`stages/${id}`, { videoUrl:'', artifacts:[] });
     return id;
+  },
+
+  async deleteStage(id) {
+    if (S.stagesMeta) delete S.stagesMeta[id];
+    if (S.stages) delete S.stages[id];
+    await fbRemove(`stagesMeta/${id}`);
+    await fbRemove(`stages/${id}`);
   },
 
   async addClient(name, company, login, password) {
@@ -498,7 +505,8 @@ const I = {
   book:`<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>`,
   refresh:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>`,
   signal:`<svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>`,
-  edit:`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>`
+  edit:`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>`,
+  trash:`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`
 };
 
 // ================================================================
@@ -815,6 +823,7 @@ function vAdminDash() {
         <p class="text-xs text-slate-400">${esc(s.label)} · ${s.videoUrl?'✅ Видео есть':'⚠️ Видео нет'} · ${s.artifacts?.length||0} материалов</p>
       </div>
       <button onclick="event.stopPropagation();openEditStageMeta('${s.id}')" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-brand-600 hover:bg-brand-50 transition" title="Переименовать">${I.edit}</button>
+      <button onclick="event.stopPropagation();openDeleteStage('${s.id}')" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition" title="Удалить этап">${I.trash}</button>
       <span onclick="go('adminStage',{stageId:'${s.id}'})" class="text-slate-300 cursor-pointer flex-shrink-0">${I.arrow}</span>
     </div>`).join('');
 
@@ -904,6 +913,22 @@ function vAdminDash() {
       <div class="flex gap-2 mt-5">
         <button onclick="saveAddStage()" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white rounded-xl py-2.5 text-sm font-semibold transition">Создать</button>
         <button onclick="document.getElementById('addStageModal').classList.add('hidden')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl py-2.5 text-sm font-semibold transition">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Stage Confirm Modal -->
+  <div id="deleteStageModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+      <div class="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+        <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      </div>
+      <h3 class="font-bold text-slate-800 text-center mb-1">Удалить этап?</h3>
+      <p id="deleteStageTitle" class="text-sm text-slate-500 text-center mb-5"></p>
+      <p class="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2 text-center mb-5">Видео и материалы этапа также будут удалены. Прогресс клиентов по этому этапу сохранится.</p>
+      <div class="flex gap-2">
+        <button onclick="confirmDeleteStage()" class="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-xl py-2.5 text-sm font-semibold transition">Удалить</button>
+        <button onclick="document.getElementById('deleteStageModal').classList.add('hidden')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl py-2.5 text-sm font-semibold transition">Отмена</button>
       </div>
     </div>
   </div>
@@ -1618,6 +1643,24 @@ async function saveEditStageMeta() {
     document.getElementById('editStageMetaModal').classList.add('hidden');
     render();
     toast('Этап обновлён ✓');
+  } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
+}
+
+let _deletingStageId = null;
+function openDeleteStage(stageId) {
+  const s = Data.stageMeta(stageId);
+  if (!s) return;
+  _deletingStageId = stageId;
+  document.getElementById('deleteStageTitle').textContent = `«${s.title}»`;
+  document.getElementById('deleteStageModal').classList.remove('hidden');
+}
+async function confirmDeleteStage() {
+  if (!_deletingStageId) return;
+  try {
+    await Data.deleteStage(_deletingStageId);
+    document.getElementById('deleteStageModal').classList.add('hidden');
+    render();
+    toast('Этап удалён');
   } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
 }
 
