@@ -849,6 +849,10 @@ function vStage() {
         <div class="flex gap-1 mb-4" id="starsRow">
           ${[1,2,3,4,5].map(n=>`<button onclick="setRating(${n})" id="star_${n}" class="text-3xl transition hover:scale-110 select-none" title="${n} звезд">☆</button>`).join('')}
         </div>
+        <!-- Hint text -->
+        <p class="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 mb-3 leading-relaxed">
+          💬 ${esc(stage.questionHint||'Пишите сюда вопросы — мы обсудим их с вами на встрече')}
+        </p>
         <!-- Chat thread -->
         <div id="feedbackChat" class="space-y-2 mb-3"></div>
         <!-- Input area -->
@@ -866,6 +870,129 @@ function vStage() {
     </div>
   </div>`;
   // Note: feedback loaded async after render via initStageFeedback()
+}
+
+// ================================================================
+// VIEW — ADMIN CHATS (list of clients)
+// ================================================================
+function vAdminChats() {
+  const clients = Data.clients();
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-gradient-to-r from-brand-800 to-brand-700 text-white sticky top-0 z-10">
+      <div class="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
+        <button onclick="go('adminDashboard')" class="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center hover:bg-brand-500 transition">${I.back}</button>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-sm">Чаты с клиентами</p>
+          <p class="text-brand-300 text-xs">Вопросы к обсуждению на встречах</p>
+        </div>
+        <button onclick="Auth.logout();go('login')" class="text-brand-300 hover:text-white flex items-center gap-1 text-xs transition">${I.logout} Выйти</button>
+      </div>
+    </div>
+    <div class="max-w-3xl mx-auto px-4 py-5 fi">
+      ${clients.length === 0
+        ? `<div class="text-center py-16 text-slate-400"><div class="text-5xl mb-4">💬</div><p class="text-sm">Клиентов пока нет</p></div>`
+        : `<div class="space-y-2">${clients.map(c => `
+          <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm cursor-pointer flex items-center gap-3" onclick="go('adminClientChat',{clientId:'${c.id}'})">
+            <div class="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-sm flex-shrink-0">${esc((c.name||'?')[0].toUpperCase())}</div>
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold text-sm text-slate-800">${esc(c.name)}</p>
+              <p class="text-xs text-slate-400">${c.company?esc(c.company)+' · ':''}<span class="font-mono">@${esc(c.login)}</span></p>
+            </div>
+            <span class="text-xs text-brand-600 font-semibold bg-brand-50 px-2.5 py-1 rounded-full">Открыть чат</span>
+            <span class="text-slate-300 flex-shrink-0">${I.arrow}</span>
+          </div>`).join('')}</div>`}
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — ADMIN CLIENT CHAT (one client, all stages questions)
+// ================================================================
+function vAdminClientChat() {
+  const client = Data.client(PARAMS.clientId);
+  if (!client) { go('adminChats'); return ''; }
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-gradient-to-r from-brand-800 to-brand-700 text-white sticky top-0 z-10">
+      <div class="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
+        <button onclick="go('adminChats')" class="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center hover:bg-brand-500 transition">${I.back}</button>
+        <div class="w-9 h-9 rounded-full bg-brand-500 flex items-center justify-center font-bold text-sm flex-shrink-0">${esc((client.name||'?')[0].toUpperCase())}</div>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-sm">${esc(client.name)}</p>
+          <p class="text-brand-300 text-xs">${client.company?esc(client.company)+' · ':''}<span class="font-mono">@${esc(client.login)}</span></p>
+        </div>
+      </div>
+    </div>
+    <div class="max-w-3xl mx-auto px-4 py-5 fi" id="clientChatContent">
+      <div class="text-center text-slate-400 text-sm py-12"><span class="sp text-2xl">↻</span></div>
+    </div>
+  </div>`;
+}
+
+async function loadAdminClientChat(clientId) {
+  const el = document.getElementById('clientChatContent');
+  if (!el) return;
+  const stages = Data.stagesMeta();
+  if (!stages.length) { el.innerHTML='<p class="text-slate-400 text-sm text-center py-8">Этапов нет</p>'; return; }
+  const results = await Promise.all(stages.map(async s => {
+    const fb = await Data.loadClientFeedback(s.id, clientId);
+    return { stage: s, fb };
+  }));
+  const withData = results.filter(r => r.fb?.comment || r.fb?.rating);
+  if (!withData.length) {
+    el.innerHTML=`<div class="text-center py-16 text-slate-400"><div class="text-5xl mb-4">💬</div><p class="text-sm font-semibold">Вопросов пока нет</p><p class="text-xs mt-1 opacity-60">Клиент ещё не написал вопросов</p></div>`;
+    return;
+  }
+  const stars = n => [1,2,3,4,5].map(i=>i<=n?'⭐':'☆').join('');
+  el.innerHTML = withData.map(({stage, fb}) => `
+    <div class="mb-6">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="h-px bg-slate-200 flex-1"></span>
+        <span class="text-xs font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap px-2">${esc(stage.label)}: ${esc(stage.title)}</span>
+        <span class="h-px bg-slate-200 flex-1"></span>
+      </div>
+      <div class="space-y-2">
+        ${fb.rating?`<div class="flex justify-end"><span class="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-2.5 py-1 rounded-full">${stars(fb.rating)} ${fb.rating}/5</span></div>`:''}
+        ${fb.comment?`
+          <div class="flex justify-end">
+            <div class="max-w-[80%] bg-brand-600 text-white text-sm px-4 py-2.5 rounded-2xl rounded-br-sm leading-relaxed shadow-sm">
+              ${esc(fb.comment)}
+              <p class="text-brand-300 text-[10px] mt-1.5">${fb.updatedAt?new Date(fb.updatedAt).toLocaleDateString('ru'):''}</p>
+            </div>
+          </div>`:''}
+        ${fb.answer?`
+          <div class="flex justify-start">
+            <div class="max-w-[80%] bg-white border border-slate-200 text-slate-800 text-sm px-4 py-2.5 rounded-2xl rounded-bl-sm leading-relaxed shadow-sm">
+              <span class="text-xs font-bold text-brand-600 block mb-1">Ваш ответ</span>
+              ${esc(fb.answer)}
+            </div>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <input type="text" id="chat_ans_${stage.id}" placeholder="Изменить ответ..."
+              class="flex-1 text-sm px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white">
+            <button onclick="sendClientChatAnswer('${stage.id}','${clientId}')"
+              class="flex-shrink-0 px-4 py-2.5 bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold rounded-xl transition">Изменить</button>
+          </div>`:fb.comment?`
+          <div class="flex gap-2">
+            <input type="text" id="chat_ans_${stage.id}" placeholder="Написать ответ клиенту..."
+              class="flex-1 text-sm px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white">
+            <button onclick="sendClientChatAnswer('${stage.id}','${clientId}')"
+              class="flex-shrink-0 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition">Отправить</button>
+          </div>`:''}
+      </div>
+    </div>`).join('');
+}
+
+async function sendClientChatAnswer(stageId, clientId) {
+  const inp = document.getElementById('chat_ans_'+stageId);
+  const answer = (inp?.value||'').trim();
+  if (!answer) return;
+  try {
+    await Data.answerFeedback(stageId, clientId, answer);
+    toast('Ответ отправлен ✓');
+    loadAdminClientChat(clientId);
+  } catch(e) { toast('Ошибка: '+e.message,'err'); }
 }
 
 // ================================================================
@@ -935,6 +1062,10 @@ function vAdminDash() {
           </div>
         </div>
         <div class="flex items-center gap-4">
+          <button onclick="go('adminChats')" class="text-brand-300 hover:text-white text-xs transition flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            Чаты
+          </button>
           <button onclick="go('adminSettings')" class="text-brand-300 hover:text-white text-xs transition">Настройки</button>
           <button onclick="Auth.logout();go('login')" class="text-brand-300 hover:text-white flex items-center gap-1 text-xs transition">${I.logout} Выйти</button>
         </div>
@@ -987,6 +1118,11 @@ function vAdminDash() {
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Темы этапа</label>
           <p class="text-xs text-slate-400 mb-1.5">Каждая тема — с новой строки</p>
           <textarea id="editStageTopics" rows="5" placeholder="Что такое проектная методология&#10;Роль руководителя проектов&#10;Принципы работы" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Подсказка для вопросов</label>
+          <p class="text-xs text-slate-400 mb-1.5">Текст-подсказка клиенту над полем вопроса</p>
+          <input id="editStageHint" type="text" placeholder="Пишите сюда вопросы, мы их обсудим с вами на встрече" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent">
         </div>
       </div>
       <div class="flex gap-2 mt-5">
@@ -1312,12 +1448,13 @@ function render() {
   const sess = Auth.session();
   if (!sess) { app.innerHTML = vLogin(); initLoginForm(); return; }
   if (sess.isAdmin) {
-    const views = { adminDashboard:vAdminDash, adminClient:vAdminClient, adminStage:vAdminStage, adminSettings:vAdminSettings };
+    const views = { adminDashboard:vAdminDash, adminClient:vAdminClient, adminStage:vAdminStage, adminSettings:vAdminSettings, adminChats:vAdminChats, adminClientChat:vAdminClientChat };
     app.innerHTML = (views[VIEW]||vAdminDash)();
     startRealtimeSync(); // единая подписка для всех admin-страниц
     if (VIEW==='adminDashboard') initAdminForms();
     if (VIEW==='adminSettings') initSettingsForm();
     if (VIEW==='adminStage') { artType='link'; loadAdminStageFeedback(PARAMS.stageId); }
+    if (VIEW==='adminClientChat') loadAdminClientChat(PARAMS.clientId);
   } else {
     const views = { dashboard:vClientDash, stage:vStage };
     app.innerHTML = (views[VIEW]||vClientDash)();
@@ -1748,6 +1885,7 @@ function openEditStageMeta(stageId) {
   document.getElementById('editStageLabel').value = s.label || '';
   document.getElementById('editStageDuration').value = s.duration || '';
   document.getElementById('editStageTopics').value = (s.topics||[]).join('\n');
+  document.getElementById('editStageHint').value = s.questionHint || '';
   document.getElementById('editStageMetaModal').classList.remove('hidden');
 }
 
@@ -1758,8 +1896,9 @@ async function saveEditStageMeta() {
   const duration = document.getElementById('editStageDuration').value.trim();
   const topicsRaw = document.getElementById('editStageTopics').value;
   const topics = topicsRaw.split('\n').map(t=>t.trim()).filter(Boolean);
+  const questionHint = document.getElementById('editStageHint').value.trim();
   try {
-    await Data.updateStageMeta(_editingStageId, { title, label, duration, topics });
+    await Data.updateStageMeta(_editingStageId, { title, label, duration, topics, questionHint });
     document.getElementById('editStageMetaModal').classList.add('hidden');
     render();
     toast('Этап обновлён ✓');
