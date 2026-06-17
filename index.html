@@ -826,17 +826,21 @@ function vStage() {
           <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
           Оценка и вопросы
         </p>
-        <p class="text-xs text-slate-400 mb-3">Оцените этот этап и задайте вопрос куратору</p>
         <div class="flex gap-1 mb-4" id="starsRow">
           ${[1,2,3,4,5].map(n=>`<button onclick="setRating(${n})" id="star_${n}" class="text-3xl transition hover:scale-110 select-none" title="${n} звезд">☆</button>`).join('')}
         </div>
-        <textarea id="feedbackComment" rows="3" placeholder="Ваш вопрос или комментарий к этому этапу..."
-          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none text-sm resize-none transition mb-2.5"></textarea>
-        <button onclick="submitStageFeedback('${stage.id}')"
-          class="w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-sm font-bold transition">Отправить</button>
-        <div id="feedbackAnswer" class="hidden mt-3 bg-brand-50 border border-brand-200 rounded-xl p-3">
-          <p class="text-xs font-bold text-brand-700 mb-1">💬 Ответ куратора:</p>
-          <p id="feedbackAnswerText" class="text-sm text-slate-700 leading-relaxed"></p>
+        <!-- Chat thread -->
+        <div id="feedbackChat" class="space-y-2 mb-3"></div>
+        <!-- Input area -->
+        <div id="feedbackInputArea">
+          <div class="flex gap-2 items-end">
+            <textarea id="feedbackComment" rows="2" placeholder="Ваш вопрос куратору..."
+              class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none text-sm resize-none transition"></textarea>
+            <button onclick="submitStageFeedback('${stage.id}')"
+              class="flex-shrink-0 w-10 h-10 bg-brand-600 hover:bg-brand-700 text-white rounded-xl flex items-center justify-center transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -944,7 +948,7 @@ function vAdminDash() {
 
   <!-- Edit Stage Meta Modal -->
   <div id="editStageMetaModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
       <h3 class="font-bold text-slate-800 mb-4">Редактировать этап</h3>
       <div class="space-y-3">
         <div>
@@ -954,6 +958,15 @@ function vAdminDash() {
         <div>
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Метка (напр. «Этап 1»)</label>
           <input id="editStageLabel" type="text" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Длительность</label>
+          <input id="editStageDuration" type="text" placeholder="Напр: 45 минут" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Темы этапа</label>
+          <p class="text-xs text-slate-400 mb-1.5">Каждая тема — с новой строки</p>
+          <textarea id="editStageTopics" rows="5" placeholder="Что такое проектная методология&#10;Роль руководителя проектов&#10;Принципы работы" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent resize-none"></textarea>
         </div>
       </div>
       <div class="flex gap-2 mt-5">
@@ -1713,15 +1726,20 @@ function openEditStageMeta(stageId) {
   _editingStageId = stageId;
   document.getElementById('editStageTitle').value = s.title || '';
   document.getElementById('editStageLabel').value = s.label || '';
+  document.getElementById('editStageDuration').value = s.duration || '';
+  document.getElementById('editStageTopics').value = (s.topics||[]).join('\n');
   document.getElementById('editStageMetaModal').classList.remove('hidden');
 }
 
 async function saveEditStageMeta() {
   const title = document.getElementById('editStageTitle').value.trim();
   const label = document.getElementById('editStageLabel').value.trim();
-  if (!title || !label) { toast('Заполните все поля', 'err'); return; }
+  if (!title || !label) { toast('Заполните название и метку', 'err'); return; }
+  const duration = document.getElementById('editStageDuration').value.trim();
+  const topicsRaw = document.getElementById('editStageTopics').value;
+  const topics = topicsRaw.split('\n').map(t=>t.trim()).filter(Boolean);
   try {
-    await Data.updateStageMeta(_editingStageId, { title, label });
+    await Data.updateStageMeta(_editingStageId, { title, label, duration, topics });
     document.getElementById('editStageMetaModal').classList.add('hidden');
     render();
     toast('Этап обновлён ✓');
@@ -1769,30 +1787,50 @@ function setRating(n) {
     if (el) el.textContent = i <= n ? '⭐' : '☆';
   });
 }
+function renderFeedbackChat(fb) {
+  const chatEl = document.getElementById('feedbackChat');
+  const inputEl = document.getElementById('feedbackInputArea');
+  if (!chatEl) return;
+  const msgs = [];
+  if (fb?.comment) {
+    msgs.push(`<div class="flex justify-end"><div class="max-w-[80%] bg-brand-600 text-white text-sm px-4 py-2.5 rounded-2xl rounded-br-sm leading-relaxed">${esc(fb.comment)}</div></div>`);
+    if (fb.answer) {
+      msgs.push(`<div class="flex justify-start"><div class="max-w-[80%] bg-slate-100 text-slate-800 text-sm px-4 py-2.5 rounded-2xl rounded-bl-sm leading-relaxed"><span class="text-xs font-bold text-brand-600 block mb-1">Куратор</span>${esc(fb.answer)}</div></div>`);
+      // Hide input after answered (they can still re-rate)
+    }
+  }
+  chatEl.innerHTML = msgs.join('');
+  // If already has a comment, change textarea placeholder
+  if (fb?.comment && inputEl) {
+    const ta = inputEl.querySelector('textarea');
+    if (ta) { ta.placeholder = 'Изменить вопрос...'; ta.value = ''; }
+  }
+}
 async function initStageFeedback(stageId, clientId) {
   try {
     const fb = await Data.loadClientFeedback(stageId, clientId);
     if (!fb) return;
     if (fb.rating) setRating(fb.rating);
-    const commentEl = document.getElementById('feedbackComment');
-    if (commentEl && fb.comment) commentEl.value = fb.comment;
-    if (fb.answer) {
-      const ansEl = document.getElementById('feedbackAnswer');
-      const ansText = document.getElementById('feedbackAnswerText');
-      if (ansEl) ansEl.classList.remove('hidden');
-      if (ansText) ansText.textContent = fb.answer;
-    }
+    renderFeedbackChat(fb);
   } catch(e) { /* silent */ }
 }
 async function submitStageFeedback(stageId) {
   const sess = Auth.session();
   const client = Data.client(sess?.clientId);
   if (!client) return;
-  const comment = (document.getElementById('feedbackComment')?.value||'').trim();
+  const commentEl = document.getElementById('feedbackComment');
+  const comment = (commentEl?.value||'').trim();
   if (!_currentRating && !comment) { toast('Поставьте оценку или напишите вопрос', 'err'); return; }
+  // Immediately clear textarea and show bubble (optimistic UI)
+  if (commentEl) commentEl.value = '';
+  if (comment) {
+    const existing = S.feedback?.[stageId]?.[client.id] || {};
+    renderFeedbackChat({ ...existing, comment, answer: existing.answer||'' });
+  }
   try {
-    await Data.submitFeedback(stageId, client.id, client.name, _currentRating, comment);
-    toast('Отзыв отправлен! Куратор ответит на ваш вопрос ✓');
+    await Data.submitFeedback(stageId, client.id, client.name, _currentRating, comment || (S.feedback?.[stageId]?.[client.id]?.comment||''));
+    if (_currentRating) toast('Оценка сохранена ✓');
+    else toast('Вопрос отправлен куратору ✓');
   } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
 }
 
