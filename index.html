@@ -76,7 +76,7 @@ const DEFAULT_STAGES = [
 // Этот объект заполняется автоматически при скачивании настроенного файла.
 // Не редактируйте вручную — используйте мастер настройки.
 // ================================================================
-const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"};
+const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"}
 
 let fbConfig = null;
 
@@ -341,6 +341,11 @@ const Data = {
   async deleteFeedback(stageId, clientId) {
     if (S.feedback?.[stageId]) delete S.feedback[stageId][clientId];
     await fbRemove(`feedback/${stageId}/${clientId}`);
+  },
+
+  async deleteClientAnswer(stageId, clientId) {
+    if (S.feedback?.[stageId]?.[clientId]) delete S.feedback[stageId][clientId].answer;
+    await fbRemove(`feedback/${stageId}/${clientId}/answer`);
   },
 
   async unlockStage(clientId, stageId) {
@@ -922,6 +927,11 @@ function vAdminClientChat() {
           <p class="font-bold text-sm">${esc(client.name)}</p>
           <p class="text-brand-300 text-xs">${client.company?esc(client.company)+' · ':''}<span class="font-mono">@${esc(client.login)}</span></p>
         </div>
+        <button onclick="clearClientChat('${PARAMS.clientId}')" title="Очистить чат"
+          class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-xl transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          Очистить
+        </button>
       </div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-5 fi" id="clientChatContent">
@@ -945,6 +955,7 @@ async function loadAdminClientChat(clientId) {
     return;
   }
   const stars = n => [1,2,3,4,5].map(i=>i<=n?'⭐':'☆').join('');
+  const trashIcon = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
   el.innerHTML = withData.map(({stage, fb}) => `
     <div class="mb-6">
       <div class="flex items-center gap-2 mb-3">
@@ -955,18 +966,22 @@ async function loadAdminClientChat(clientId) {
       <div class="space-y-2">
         ${fb.rating?`<div class="flex justify-end"><span class="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-2.5 py-1 rounded-full">${stars(fb.rating)} ${fb.rating}/5</span></div>`:''}
         ${fb.comment?`
-          <div class="flex justify-end">
+          <div class="flex justify-end items-end gap-2">
+            <button onclick="deleteChatMessage('${stage.id}','${clientId}')" title="Удалить сообщение"
+              class="w-7 h-7 flex items-center justify-center rounded-xl text-slate-300 hover:text-red-400 hover:bg-red-50 transition flex-shrink-0">${trashIcon}</button>
             <div class="max-w-[80%] bg-brand-600 text-white text-sm px-4 py-2.5 rounded-2xl rounded-br-sm leading-relaxed shadow-sm">
               ${esc(fb.comment)}
               <p class="text-brand-300 text-[10px] mt-1.5">${fb.updatedAt?new Date(fb.updatedAt).toLocaleDateString('ru'):''}</p>
             </div>
           </div>`:''}
         ${fb.answer?`
-          <div class="flex justify-start">
+          <div class="flex justify-start items-end gap-2">
             <div class="max-w-[80%] bg-white border border-slate-200 text-slate-800 text-sm px-4 py-2.5 rounded-2xl rounded-bl-sm leading-relaxed shadow-sm">
               <span class="text-xs font-bold text-brand-600 block mb-1">Ваш ответ</span>
               ${esc(fb.answer)}
             </div>
+            <button onclick="deleteChatAnswer('${stage.id}','${clientId}')" title="Удалить ответ"
+              class="w-7 h-7 flex items-center justify-center rounded-xl text-slate-300 hover:text-red-400 hover:bg-red-50 transition flex-shrink-0">${trashIcon}</button>
           </div>
           <div class="flex gap-2 mt-2">
             <input type="text" id="chat_ans_${stage.id}" placeholder="Изменить ответ..."
@@ -991,6 +1006,32 @@ async function sendClientChatAnswer(stageId, clientId) {
   try {
     await Data.answerFeedback(stageId, clientId, answer);
     toast('Ответ отправлен ✓');
+    loadAdminClientChat(clientId);
+  } catch(e) { toast('Ошибка: '+e.message,'err'); }
+}
+
+async function deleteChatMessage(stageId, clientId) {
+  try {
+    await Data.deleteFeedback(stageId, clientId);
+    toast('Сообщение удалено');
+    loadAdminClientChat(clientId);
+  } catch(e) { toast('Ошибка: '+e.message,'err'); }
+}
+
+async function deleteChatAnswer(stageId, clientId) {
+  try {
+    await Data.deleteClientAnswer(stageId, clientId);
+    toast('Ответ удалён');
+    loadAdminClientChat(clientId);
+  } catch(e) { toast('Ошибка: '+e.message,'err'); }
+}
+
+async function clearClientChat(clientId) {
+  if (!confirm('Удалить все вопросы этого клиента из чата? Отменить будет невозможно.')) return;
+  try {
+    const stages = Data.stagesMeta();
+    await Promise.all(stages.map(s => Data.deleteFeedback(s.id, clientId)));
+    toast('Чат очищен');
     loadAdminClientChat(clientId);
   } catch(e) { toast('Ошибка: '+e.message,'err'); }
 }
