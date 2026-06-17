@@ -321,6 +321,26 @@ const Data = {
   async deleteClient(id) {
     delete S.clients[id];
     await fbRemove(`clients/${id}`);
+    // Clean up all feedback left by this client across all stages
+    if (S.feedback) {
+      for (const stageId of Object.keys(S.feedback)) {
+        if (S.feedback[stageId]?.[id]) {
+          delete S.feedback[stageId][id];
+          await fbRemove(`feedback/${stageId}/${id}`);
+        }
+      }
+    } else {
+      // Even if not cached locally, clean from Firebase
+      const allFeedback = await fbGet('feedback') || {};
+      for (const stageId of Object.keys(allFeedback)) {
+        if (allFeedback[stageId]?.[id]) await fbRemove(`feedback/${stageId}/${id}`);
+      }
+    }
+  },
+
+  async deleteFeedback(stageId, clientId) {
+    if (S.feedback?.[stageId]) delete S.feedback[stageId][clientId];
+    await fbRemove(`feedback/${stageId}/${clientId}`);
   },
 
   async unlockStage(clientId, stageId) {
@@ -1853,13 +1873,19 @@ async function loadAdminStageFeedback(stageId) {
         </div>
       </div>
       ${entries.map(f=>`
-      <div class="border border-slate-200 rounded-xl p-4 mb-3">
+      <div class="border border-slate-200 rounded-xl p-4 mb-3" id="fb_${f.clientId}">
         <div class="flex items-start justify-between gap-2 mb-2">
           <div>
             <p class="text-sm font-semibold text-slate-800">${esc(f.clientName||'Клиент')}</p>
             ${f.rating?`<p class="text-xs mt-0.5">${stars(f.rating)}</p>`:''}
           </div>
-          <p class="text-xs text-slate-400">${f.updatedAt?new Date(f.updatedAt).toLocaleDateString('ru'):'—'}</p>
+          <div class="flex items-center gap-2">
+            <p class="text-xs text-slate-400">${f.updatedAt?new Date(f.updatedAt).toLocaleDateString('ru'):'—'}</p>
+            <button onclick="deleteAdminFeedback('${stageId}','${f.clientId}')" title="Удалить отзыв"
+              class="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition flex-shrink-0">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </div>
         </div>
         ${f.comment?`<p class="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2 mb-2">${esc(f.comment)}</p>`:''}
         ${f.answer?`
@@ -1886,6 +1912,19 @@ async function sendAdminAnswer(stageId, clientId) {
     toast('Ответ отправлен клиенту ✓');
     loadAdminStageFeedback(stageId);
   } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
+}
+async function deleteAdminFeedback(stageId, clientId) {
+  // Optimistic: hide card immediately
+  const card = document.getElementById('fb_'+clientId);
+  if (card) { card.style.opacity='0.4'; card.style.pointerEvents='none'; }
+  try {
+    await Data.deleteFeedback(stageId, clientId);
+    loadAdminStageFeedback(stageId);
+    toast('Сообщение удалено');
+  } catch(e) {
+    if (card) { card.style.opacity=''; card.style.pointerEvents=''; }
+    toast('Ошибка: ' + e.message, 'err');
+  }
 }
 
 let _deletingStageId = null;
