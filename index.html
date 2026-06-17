@@ -36,7 +36,7 @@
 // CONSTANTS
 // ================================================================
 const ADMIN_LOGIN = 'admin';
-const SK = { CONFIG:'uk_fb_config', SESSION:'uk_session' };
+const SK = { CONFIG:'uk_fb_config', SESSION:'uk_session', ADMIN_BACKUP:'uk_admin_backup' };
 
 const DEFAULT_STAGES = [
   { id:'intro',  order:0, label:'Вводное видео', title:'Введение в Проектную методологию',
@@ -76,7 +76,7 @@ const DEFAULT_STAGES = [
 // Этот объект заполняется автоматически при скачивании настроенного файла.
 // Не редактируйте вручную — используйте мастер настройки.
 // ================================================================
-const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"}
+const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"} // <-- сюда вставляется конфиг при генерации файла
 
 let fbConfig = null;
 
@@ -1122,18 +1122,24 @@ function vAdminDash() {
     : clients.map(c => {
         const done=(c.completedStages||[]).length, pct=Math.round(done/stages.length*100);
         return `
-        <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
+        <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm">
           <div class="flex items-center justify-between mb-2">
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1 cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
               <p class="font-semibold text-sm text-slate-800">${esc(c.name)}</p>
               <p class="text-xs text-slate-400">${esc(c.company)||'—'} · @${esc(c.login)}</p>
             </div>
-            <div class="text-right flex-shrink-0 ml-3">
-              <p class="text-xl font-extrabold text-brand-600">${pct}%</p>
-              <p class="text-xs text-slate-400">${done}/${stages.length} этапов</p>
+            <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+              <button onclick="event.stopPropagation();impersonateClient('${c.id}')" title="Посмотреть глазами клиента"
+                class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-brand-600 hover:bg-brand-50 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              </button>
+              <div class="text-right cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
+                <p class="text-xl font-extrabold text-brand-600">${pct}%</p>
+                <p class="text-xs text-slate-400">${done}/${stages.length} этапов</p>
+              </div>
             </div>
           </div>
-          <div class="bg-slate-100 rounded-full h-1.5 overflow-hidden">
+          <div class="bg-slate-100 rounded-full h-1.5 overflow-hidden cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
             <div class="bg-brand-500 h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
           </div>
         </div>`;
@@ -1558,8 +1564,56 @@ function vAdminSettings() {
 // ================================================================
 // RENDER
 // ================================================================
+// IMPERSONATION
+// ================================================================
+async function impersonateClient(clientId) {
+  const client = Data.client(clientId);
+  if (!client) return toast('Клиент не найден', 'err');
+  // Сохраняем сессию администратора
+  localStorage.setItem(SK.ADMIN_BACKUP, localStorage.getItem(SK.SESSION));
+  // Создаём сессию клиента (с валидным токеном)
+  const token = await makeSessionToken('client_' + client.id, client.passwordHash);
+  Auth.setSession({ isAdmin: false, login: client.login, clientId: client.id, _st: token, _impersonated: true }, 86400000);
+  VIEW = 'dashboard';
+  render();
+}
+
+function stopImpersonating() {
+  const backup = localStorage.getItem(SK.ADMIN_BACKUP);
+  if (!backup) return;
+  localStorage.setItem(SK.SESSION, backup);
+  localStorage.removeItem(SK.ADMIN_BACKUP);
+  VIEW = 'adminDashboard';
+  render();
+}
+
+function renderImpersonationBanner() {
+  const sess = Auth.session();
+  const backup = localStorage.getItem(SK.ADMIN_BACKUP);
+  if (!backup || !sess?._impersonated) return;
+  const client = Data.client(sess.clientId);
+  const existing = document.getElementById('impersonation-banner');
+  if (existing) return; // уже есть
+  const banner = document.createElement('div');
+  banner.id = 'impersonation-banner';
+  banner.className = 'fixed top-0 left-0 right-0 z-50 bg-amber-500 text-white text-sm font-semibold flex items-center justify-center gap-3 px-4 py-2.5 shadow-lg';
+  banner.innerHTML = `
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+    <span>Просмотр от лица клиента: <strong>${esc(client?.name || sess.login)}</strong></span>
+    <button onclick="stopImpersonating()" class="ml-2 bg-white text-amber-600 hover:bg-amber-50 px-3 py-1 rounded-lg text-xs font-bold transition">← Вернуться в админ</button>
+  `;
+  document.body.prepend(banner);
+  // Сдвигаем контент вниз
+  document.getElementById('app').style.paddingTop = '44px';
+}
+
+// ================================================================
 function render() {
   const app = document.getElementById('app');
+  // Убираем баннер при каждом рендере (пересоздаётся ниже если нужен)
+  const oldBanner = document.getElementById('impersonation-banner');
+  if (oldBanner) oldBanner.remove();
+  app.style.paddingTop = '';
   const sess = Auth.session();
   if (!sess) { app.innerHTML = vLogin(); initLoginForm(); return; }
   if (sess.isAdmin) {
@@ -1579,6 +1633,7 @@ function render() {
       _currentRating = 0;
       if (sess2?.clientId) initStageFeedback(PARAMS.stageId, sess2.clientId);
     }
+    renderImpersonationBanner();
   }
 }
 
