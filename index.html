@@ -146,7 +146,7 @@ async function fbRemove(path) {
 // ================================================================
 // IN-MEMORY STATE
 // ================================================================
-const S = { clients: {}, stages: {}, stagesMeta: null, loaded: false };
+const S = { clients: {}, stages: {}, stagesMeta: null, feedback: {}, loaded: false };
 
 // ================================================================
 // CRYPTO
@@ -260,6 +260,43 @@ const Data = {
     if (S.stages) delete S.stages[id];
     await fbRemove(`stagesMeta/${id}`);
     await fbRemove(`stages/${id}`);
+  },
+
+  async reorderStages(orderedIds) {
+    if (!S.stagesMeta) return;
+    orderedIds.forEach((id, idx) => { if (S.stagesMeta[id]) S.stagesMeta[id].order = idx; });
+    await Promise.all(orderedIds.map((id, idx) => fbSet(`stagesMeta/${id}/order`, idx)));
+  },
+
+  async submitFeedback(stageId, clientId, clientName, rating, comment) {
+    const existing = S.feedback?.[stageId]?.[clientId] || {};
+    const entry = { clientId, clientName, rating: rating||0, comment: comment||'', updatedAt: new Date().toISOString(),
+      answer: existing.answer||'', answeredAt: existing.answeredAt||'' };
+    if (!S.feedback[stageId]) S.feedback[stageId] = {};
+    S.feedback[stageId][clientId] = entry;
+    await fbSet(`feedback/${stageId}/${clientId}`, entry);
+  },
+
+  async answerFeedback(stageId, clientId, answer) {
+    if (!S.feedback[stageId]?.[clientId]) return;
+    S.feedback[stageId][clientId].answer = answer;
+    S.feedback[stageId][clientId].answeredAt = new Date().toISOString();
+    await fbSet(`feedback/${stageId}/${clientId}/answer`, answer);
+    await fbSet(`feedback/${stageId}/${clientId}/answeredAt`, S.feedback[stageId][clientId].answeredAt);
+  },
+
+  async loadStageFeedback(stageId) {
+    const data = await fbGet(`feedback/${stageId}`);
+    if (!S.feedback) S.feedback = {};
+    S.feedback[stageId] = data || {};
+    return S.feedback[stageId];
+  },
+
+  async loadClientFeedback(stageId, clientId) {
+    const data = await fbGet(`feedback/${stageId}/${clientId}`);
+    if (!S.feedback[stageId]) S.feedback[stageId] = {};
+    S.feedback[stageId][clientId] = data || null;
+    return data;
   },
 
   async addClient(name, company, login, password) {
@@ -782,8 +819,29 @@ function vStage() {
       </div>
       ${arts?`<div class="mt-4"><p class="font-bold text-slate-800 mb-3 text-sm">Материалы к этапу</p><div class="space-y-2">${arts}</div></div>`:''}
       ${cta}
+
+      <!-- Feedback block -->
+      <div class="mt-4 bg-white rounded-2xl border border-slate-100 p-5" id="feedbackBlock">
+        <p class="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2">
+          <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          Оценка и вопросы
+        </p>
+        <p class="text-xs text-slate-400 mb-3">Оцените этот этап и задайте вопрос куратору</p>
+        <div class="flex gap-1 mb-4" id="starsRow">
+          ${[1,2,3,4,5].map(n=>`<button onclick="setRating(${n})" id="star_${n}" class="text-3xl transition hover:scale-110 select-none" title="${n} звезд">☆</button>`).join('')}
+        </div>
+        <textarea id="feedbackComment" rows="3" placeholder="Ваш вопрос или комментарий к этому этапу..."
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none text-sm resize-none transition mb-2.5"></textarea>
+        <button onclick="submitStageFeedback('${stage.id}')"
+          class="w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-sm font-bold transition">Отправить</button>
+        <div id="feedbackAnswer" class="hidden mt-3 bg-brand-50 border border-brand-200 rounded-xl p-3">
+          <p class="text-xs font-bold text-brand-700 mb-1">💬 Ответ куратора:</p>
+          <p id="feedbackAnswerText" class="text-sm text-slate-700 leading-relaxed"></p>
+        </div>
+      </div>
     </div>
   </div>`;
+  // Note: feedback loaded async after render via initStageFeedback()
 }
 
 // ================================================================
@@ -816,7 +874,17 @@ function vAdminDash() {
       }).join('');
 
   const stageCards = stages.map(s=>`
-    <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm flex items-center gap-3">
+    <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm flex items-center gap-3 stage-card"
+         draggable="true" data-stage-id="${s.id}"
+         ondragstart="stageDragStart(event,'${s.id}')"
+         ondragover="stageDragOver(event)"
+         ondrop="stageDrop(event,'${s.id}')"
+         ondragleave="stageDragLeave(event)">
+      <div class="flex-shrink-0 w-5 flex flex-col gap-0.5 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition" title="Перетащить для сортировки">
+        <span class="block w-4 h-0.5 bg-current rounded"></span>
+        <span class="block w-4 h-0.5 bg-current rounded"></span>
+        <span class="block w-4 h-0.5 bg-current rounded"></span>
+      </div>
       <div onclick="go('adminStage',{stageId:'${s.id}'})" class="w-9 h-9 rounded-lg ${s.videoUrl?'bg-brand-50 text-brand-600':'bg-slate-100 text-slate-400'} flex items-center justify-center flex-shrink-0 cursor-pointer">${I.vid}</div>
       <div onclick="go('adminStage',{stageId:'${s.id}'})" class="flex-1 min-w-0 cursor-pointer">
         <p class="text-sm font-semibold text-slate-800 truncate">${esc(s.title)}</p>
@@ -1102,6 +1170,15 @@ function vAdminStage() {
         </div>
       </div>
 
+      <!-- Feedback from clients -->
+      <div class="bg-white rounded-2xl border border-slate-100 p-5" id="adminFeedbackBlock">
+        <p class="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2">
+          <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          Отзывы и вопросы клиентов
+        </p>
+        <div id="adminFeedbackList"><p class="text-xs text-slate-400">Загрузка...</p></div>
+      </div>
+
       <!-- Artifacts -->
       <div class="bg-white rounded-2xl border border-slate-100 p-5">
         <p class="font-bold text-slate-800 mb-4 text-sm flex items-center gap-2">
@@ -1207,11 +1284,16 @@ function render() {
     startRealtimeSync(); // единая подписка для всех admin-страниц
     if (VIEW==='adminDashboard') initAdminForms();
     if (VIEW==='adminSettings') initSettingsForm();
-    if (VIEW==='adminStage') artType='link';
+    if (VIEW==='adminStage') { artType='link'; loadAdminStageFeedback(PARAMS.stageId); }
   } else {
     const views = { dashboard:vClientDash, stage:vStage };
     app.innerHTML = (views[VIEW]||vClientDash)();
     startClientSync(); // проверяет обновления доступа раз в 30 сек
+    if (VIEW==='stage') {
+      const sess2 = Auth.session();
+      _currentRating = 0;
+      if (sess2?.clientId) initStageFeedback(PARAMS.stageId, sess2.clientId);
+    }
   }
 }
 
@@ -1643,6 +1725,128 @@ async function saveEditStageMeta() {
     document.getElementById('editStageMetaModal').classList.add('hidden');
     render();
     toast('Этап обновлён ✓');
+  } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
+}
+
+// ---- Drag & drop stage reorder ----
+let _dragSrcId = null;
+function stageDragStart(e, id) {
+  _dragSrcId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.classList.add('opacity-50');
+}
+function stageDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('border-brand-400','bg-brand-50/30');
+}
+function stageDragLeave(e) {
+  e.currentTarget.classList.remove('border-brand-400','bg-brand-50/30');
+}
+async function stageDrop(e, targetId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('border-brand-400','bg-brand-50/30');
+  document.querySelectorAll('.stage-card').forEach(c=>c.classList.remove('opacity-50'));
+  if (!_dragSrcId || _dragSrcId === targetId) return;
+  const ordered = Data.stagesMeta().map(s=>s.id);
+  const srcIdx = ordered.indexOf(_dragSrcId);
+  const tgtIdx = ordered.indexOf(targetId);
+  ordered.splice(srcIdx, 1);
+  ordered.splice(tgtIdx, 0, _dragSrcId);
+  try {
+    await Data.reorderStages(ordered);
+    render();
+    toast('Порядок сохранён ✓');
+  } catch(err) { toast('Ошибка: ' + err.message, 'err'); }
+}
+
+// ---- Stage feedback (client side) ----
+let _currentRating = 0;
+function setRating(n) {
+  _currentRating = n;
+  [1,2,3,4,5].forEach(i => {
+    const el = document.getElementById('star_'+i);
+    if (el) el.textContent = i <= n ? '⭐' : '☆';
+  });
+}
+async function initStageFeedback(stageId, clientId) {
+  try {
+    const fb = await Data.loadClientFeedback(stageId, clientId);
+    if (!fb) return;
+    if (fb.rating) setRating(fb.rating);
+    const commentEl = document.getElementById('feedbackComment');
+    if (commentEl && fb.comment) commentEl.value = fb.comment;
+    if (fb.answer) {
+      const ansEl = document.getElementById('feedbackAnswer');
+      const ansText = document.getElementById('feedbackAnswerText');
+      if (ansEl) ansEl.classList.remove('hidden');
+      if (ansText) ansText.textContent = fb.answer;
+    }
+  } catch(e) { /* silent */ }
+}
+async function submitStageFeedback(stageId) {
+  const sess = Auth.session();
+  const client = Data.client(sess?.clientId);
+  if (!client) return;
+  const comment = (document.getElementById('feedbackComment')?.value||'').trim();
+  if (!_currentRating && !comment) { toast('Поставьте оценку или напишите вопрос', 'err'); return; }
+  try {
+    await Data.submitFeedback(stageId, client.id, client.name, _currentRating, comment);
+    toast('Отзыв отправлен! Куратор ответит на ваш вопрос ✓');
+  } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
+}
+
+// ---- Admin feedback view ----
+async function loadAdminStageFeedback(stageId) {
+  const listEl = document.getElementById('adminFeedbackList');
+  if (!listEl) return;
+  try {
+    const fbMap = await Data.loadStageFeedback(stageId);
+    const entries = Object.values(fbMap).filter(f=>f.rating||f.comment);
+    if (!entries.length) { listEl.innerHTML='<p class="text-xs text-slate-400 text-center py-4">Отзывов пока нет</p>'; return; }
+    const stars = n => [1,2,3,4,5].map(i=>i<=n?'⭐':'☆').join('');
+    const avgRating = entries.filter(e=>e.rating).reduce((s,e)=>s+e.rating,0) / (entries.filter(e=>e.rating).length||1);
+    listEl.innerHTML = `
+      <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+        <span class="text-2xl">${stars(Math.round(avgRating))}</span>
+        <div>
+          <p class="text-sm font-bold text-slate-800">${avgRating.toFixed(1)} / 5</p>
+          <p class="text-xs text-slate-500">${entries.filter(e=>e.rating).length} оценок · ${entries.filter(e=>e.comment).length} вопросов</p>
+        </div>
+      </div>
+      ${entries.map(f=>`
+      <div class="border border-slate-200 rounded-xl p-4 mb-3">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div>
+            <p class="text-sm font-semibold text-slate-800">${esc(f.clientName||'Клиент')}</p>
+            ${f.rating?`<p class="text-xs mt-0.5">${stars(f.rating)}</p>`:''}
+          </div>
+          <p class="text-xs text-slate-400">${f.updatedAt?new Date(f.updatedAt).toLocaleDateString('ru'):'—'}</p>
+        </div>
+        ${f.comment?`<p class="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2 mb-2">${esc(f.comment)}</p>`:''}
+        ${f.answer?`
+          <div class="bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 mb-2">
+            <p class="text-xs font-bold text-brand-700 mb-0.5">Ваш ответ:</p>
+            <p class="text-sm text-slate-700">${esc(f.answer)}</p>
+          </div>`:
+          f.comment?`
+          <div class="flex gap-2 mt-2">
+            <input type="text" id="ans_${f.clientId}" placeholder="Написать ответ клиенту..."
+              class="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-300">
+            <button onclick="sendAdminAnswer('${stageId}','${f.clientId}')"
+              class="text-xs bg-brand-600 hover:bg-brand-700 text-white px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap">Ответить</button>
+          </div>`:''}
+      </div>`).join('')}`;
+  } catch(e) { listEl.innerHTML='<p class="text-xs text-red-400">Ошибка загрузки</p>'; }
+}
+async function sendAdminAnswer(stageId, clientId) {
+  const inp = document.getElementById('ans_'+clientId);
+  const answer = (inp?.value||'').trim();
+  if (!answer) return;
+  try {
+    await Data.answerFeedback(stageId, clientId, answer);
+    toast('Ответ отправлен клиенту ✓');
+    loadAdminStageFeedback(stageId);
   } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
 }
 
