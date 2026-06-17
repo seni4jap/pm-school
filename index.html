@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>УК "Консилиум" — Обучение Проектной методологии</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: { brand: { 50:'#f5f3ff',100:'#ede9fe',200:'#ddd6fe',300:'#c4b5fd',400:'#a78bfa',500:'#8b5cf6',600:'#7c3aed',700:'#6d28d9',800:'#5b21b6',900:'#4c1d95' } },
+        fontFamily: { sans: ['Inter','sans-serif'] }
+      }}
+    }
+  </script>
+  <style>
+    .vc { position:relative; padding-bottom:56.25%; height:0; overflow:hidden; border-radius:12px; }
+    .vc iframe,.vc video { position:absolute; top:0; left:0; width:100%; height:100%; border:none; }
+    @keyframes fi { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    .fi { animation: fi .25s ease-out; }
+    @keyframes sp { to{transform:rotate(360deg)} }
+    .sp { animation: sp 1s linear infinite; display:inline-block; }
+    ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-track{background:#f1f5f9} ::-webkit-scrollbar-thumb{background:#c4b5fd;border-radius:4px}
+  </style>
+</head>
+<body class="bg-slate-50 font-sans min-h-screen">
+  <div id="app"><div class="min-h-screen flex items-center justify-center"><div class="text-slate-400 text-sm">Загрузка...</div></div></div>
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden">
+    <div id="ti" class="px-5 py-3 rounded-2xl shadow-xl text-sm font-bold text-white"></div>
+  </div>
+
+<script>
+// ================================================================
+// CONSTANTS
+// ================================================================
+const ADMIN_LOGIN = 'admin';
+const SK = { CONFIG:'uk_fb_config', SESSION:'uk_session' };
+
+const DEFAULT_STAGES = [
+  { id:'intro',  order:0, label:'Вводное видео', title:'Введение в Проектную методологию',
+    topics:['Что такое проектная методология','Принципы работы УК «Консилиум»','Роль внутреннего руководителя проектов'],
+    duration:'47 минут', videoUrl:'', artifacts:[] },
+  { id:'stage0', order:1, label:'Этап 0', title:'Обзор программы обучения',
+    topics:['Как будет проходить обучение','Этапы и ожидаемые результаты','Что вас ждёт впереди'],
+    duration:'15 минут', videoUrl:'', artifacts:[] },
+  { id:'stage1', order:2, label:'Этап 1', title:'Задача, процесс, проект — в чём разница?',
+    topics:['Задача vs Процесс vs Проект','Приоритизация проектов','Превращение идей в проекты','Из чего состоит проект'],
+    duration:'', videoUrl:'', artifacts:[] },
+  { id:'stage2', order:3, label:'Этап 2', title:'Паспорт проекта и роли',
+    topics:['Что такое паспорт проекта','Роли в проекте','Как создать паспорт проекта'],
+    duration:'', videoUrl:'', artifacts:[] },
+  { id:'stage3', order:4, label:'Этап 3', title:'Экономическое обоснование проекта',
+    topics:['Зачем нужно экономическое обоснование','Структура и содержание','Как защитить обоснование'],
+    duration:'', videoUrl:'', artifacts:[] },
+  { id:'stage4', order:5, label:'Этап 4', title:'Диаграмма Ганта',
+    topics:['Что такое диаграмма Ганта','Построение диаграммы по проекту','Защита и согласование плана'],
+    duration:'', videoUrl:'', artifacts:[] },
+  { id:'stage5', order:6, label:'Этап 5', title:'Запуск проекта',
+    topics:['Процесс запуска проекта','Инструменты запуска','Проведение установочной встречи с командой'],
+    duration:'', videoUrl:'', artifacts:[] },
+  { id:'stage6', order:7, label:'Этап 6', title:'Реализация проекта',
+    topics:['Процесс реализации проекта','Инструменты руководителя проектов','Типы встреч в проекте'],
+    duration:'', videoUrl:'', artifacts:[] },
+  { id:'stage7', order:8, label:'Этап 7', title:'Статус-чек и управление изменениями',
+    topics:['Проведение статус-чека','Согласование изменений в ходе проекта'],
+    duration:'', videoUrl:'', artifacts:[] },
+  { id:'stage8', order:9, label:'Этап 8', title:'Завершение проекта',
+    topics:['Процесс завершения проекта','Подведение итогов','Передача базы знаний'],
+    duration:'', videoUrl:'', artifacts:[] }
+];
+
+// ================================================================
+// FIREBASE CONFIG
+// Этот объект заполняется автоматически при скачивании настроенного файла.
+// Не редактируйте вручную — используйте мастер настройки.
+// ================================================================
+const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"}; // <-- сюда вставляется конфиг при генерации файла
+
+let fbConfig = null;
+
+function getStoredConfig() {
+  if (EMBEDDED_CONFIG && EMBEDDED_CONFIG.apiKey) return EMBEDDED_CONFIG;
+  try { return JSON.parse(localStorage.getItem(SK.CONFIG)); } catch { return null; }
+}
+
+function downloadConfiguredFile(config) {
+  const html = document.documentElement.outerHTML;
+  const configured = '<!DOCTYPE html>\n' + html.replace(
+    'const EMBEDDED_CONFIG = null;',
+    'const EMBEDDED_CONFIG = ' + JSON.stringify(config, null, 2) + ';'
+  );
+  const blob = new Blob([configured], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'index.html';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function initFirebase(config) {
+  fbConfig = config;
+  return true; // используем REST API — всегда работает
+}
+
+// ================================================================
+// FIREBASE REST API (вместо SDK — надёжнее, без WebSocket)
+// ================================================================
+async function fbFetch(url, opts = {}, attempt = 1) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    clearTimeout(tid);
+    return res;
+  } catch(e) {
+    clearTimeout(tid);
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, 1500)); // пауза перед повтором
+      return fbFetch(url, opts, attempt + 1);
+    }
+    throw new Error('Нет ответа от Firebase. Проверьте интернет и попробуйте ещё раз.');
+  }
+}
+async function fbGet(path) {
+  const res = await fbFetch(`${fbConfig.databaseURL}/${path}.json`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Ошибка чтения (${res.status})`);
+  return res.json();
+}
+async function fbSet(path, value) {
+  const res = await fbFetch(`${fbConfig.databaseURL}/${path}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(value)
+  });
+  if (!res.ok) throw new Error(`Ошибка записи (${res.status})`);
+  return res.json();
+}
+async function fbRemove(path) {
+  const res = await fbFetch(`${fbConfig.databaseURL}/${path}.json`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Ошибка удаления (${res.status})`);
+}
+
+// ================================================================
+// IN-MEMORY STATE
+// ================================================================
+const S = { clients: {}, stages: {}, stagesMeta: null, loaded: false };
+
+// ================================================================
+// CRYPTO
+// ================================================================
+async function hashPwd(pwd) {
+  const data = new TextEncoder().encode(pwd + '_uk_salt');
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function checkPwd(pwd, hash) { return (await hashPwd(pwd)) === hash; }
+
+// Экранирование HTML — защита от XSS в именах клиентов и содержимом артефактов
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// Безопасное приведение к массиву — Firebase иногда возвращает null или object вместо []
+function toArr(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v==='object') return Object.values(v); return []; }
+
+// ================================================================
+// DATA LAYER (Firebase REST API — без WebSocket, надёжнее)
+// ================================================================
+const Data = {
+
+  async load() {
+    const [clients, stages, stagesMetaRaw, adminHash] = await Promise.all([
+      fbGet('clients'),
+      fbGet('stages'),
+      fbGet('stagesMeta'),
+      fbGet('admin/passwordHash')
+    ]);
+    S.clients = clients || {};
+    S.stages  = stages  || {};
+
+    // Seed stagesMeta from DEFAULT_STAGES if missing in Firebase
+    if (stagesMetaRaw) {
+      S.stagesMeta = stagesMetaRaw;
+    } else {
+      const seed = {};
+      DEFAULT_STAGES.forEach(st => {
+        seed[st.id] = { id:st.id, order:st.order, label:st.label, title:st.title, topics:st.topics||[], duration:st.duration||'' };
+      });
+      await fbSet('stagesMeta', seed);
+      S.stagesMeta = seed;
+    }
+
+    // Seed any missing stage records (handles partial seeding too)
+    const stagesObj = { ...S.stages };
+    let stagesChanged = false;
+    Object.values(S.stagesMeta).forEach(st => {
+      if (!stagesObj[st.id]) { stagesObj[st.id] = { videoUrl:'', artifacts:[] }; stagesChanged=true; }
+    });
+    if (stagesChanged) { await fbSet('stages', stagesObj); S.stages = stagesObj; }
+    // Seed admin password on first run
+    if (!adminHash) await fbSet('admin/passwordHash', await hashPwd('admin123'));
+
+    S.loaded = true;
+  },
+
+  // Обновить клиентов из базы (для polling)
+  async refreshClients() {
+    const data = (await fbGet('clients')) || {};
+    // Нормализуем массивы — Firebase может вернуть null вместо [] или object вместо array
+    Object.values(data).forEach(c => {
+      c.unlockedStages  = toArr(c.unlockedStages);
+      c.completedStages = toArr(c.completedStages);
+    });
+    S.clients = data;
+  },
+
+  // ---- Helpers ----
+  stagesMeta() {
+    const src = S.stagesMeta ? Object.values(S.stagesMeta) : DEFAULT_STAGES;
+    return [...src].sort((a,b)=>a.order-b.order);
+  },
+  stageMeta(id) {
+    return S.stagesMeta ? (S.stagesMeta[id]||null) : DEFAULT_STAGES.find(s=>s.id===id);
+  },
+  stageData(id) { return S.stages[id] || { videoUrl:'', artifacts:[] }; },
+  stage(id) { const m=this.stageMeta(id); return m ? { ...m, ...this.stageData(m.id) } : null; },
+  stages() { return this.stagesMeta().map(m=>({...m,...this.stageData(m.id)})); },
+
+  clients() { return Object.values(S.clients); },
+  client(id) { return S.clients[id] || null; },
+  clientByLogin(login) { return Object.values(S.clients).find(c=>c.login?.toLowerCase()===login?.toLowerCase())||null; },
+
+  async updateStageData(id, updates) {
+    const merged = { ...( S.stages[id]||{} ), ...updates };
+    S.stages[id] = merged;
+    await fbSet(`stages/${id}`, merged);
+  },
+
+  async updateStageMeta(id, updates) {
+    if (!S.stagesMeta) S.stagesMeta = {};
+    S.stagesMeta[id] = { ...(S.stagesMeta[id]||{}), ...updates };
+    await fbSet(`stagesMeta/${id}`, S.stagesMeta[id]);
+  },
+
+  async addStage(title, label) {
+    const existingOrders = this.stagesMeta().map(s=>s.order);
+    const order = existingOrders.length ? Math.max(...existingOrders) + 1 : 1;
+    const id = 'custom_' + Date.now();
+    const meta = { id, order, label, title, topics:[], duration:'' };
+    if (!S.stagesMeta) S.stagesMeta = {};
+    S.stagesMeta[id] = meta;
+    S.stages[id] = { videoUrl:'', artifacts:[] };
+    await fbSet(`stagesMeta/${id}`, meta);
+    await fbSet(`stages/${id}`, { videoUrl:'', artifacts:[] });
+    return id;
+  },
+
+  async addClient(name, company, login, password) {
+    if (this.clientByLogin(login)) throw new Error('Логин уже занят');
+    const client = {
+      id: 'c_' + Date.now(), name, company, login,
+      passwordHash: await hashPwd(password),
+      unlockedStages: ['intro'], completedStages: [],
+      createdAt: new Date().toISOString()
+    };
+    S.clients[client.id] = client;
+    await fbSet(`clients/${client.id}`, client);
+    return client;
+  },
+
+  async updateClientPassword(id, newPwd) {
+    const hash = await hashPwd(newPwd);
+    if (S.clients[id]) S.clients[id].passwordHash = hash;
+    await fbSet(`clients/${id}/passwordHash`, hash);
+  },
+
+  async deleteClient(id) {
+    delete S.clients[id];
+    await fbRemove(`clients/${id}`);
+  },
+
+  async unlockStage(clientId, stageId) {
+    const c = S.clients[clientId]; if (!c) return;
+    c.unlockedStages = toArr(c.unlockedStages);
+    if (!c.unlockedStages.includes(stageId)) {
+      c.unlockedStages = [...c.unlockedStages, stageId];
+      await fbSet(`clients/${clientId}/unlockedStages`, c.unlockedStages);
+    }
+  },
+
+  async lockStage(clientId, stageId) {
+    const c = S.clients[clientId]; if (!c) return;
+    c.unlockedStages  = toArr(c.unlockedStages).filter(s=>s!==stageId);
+    c.completedStages = toArr(c.completedStages).filter(s=>s!==stageId);
+    await fbSet(`clients/${clientId}/unlockedStages`,  c.unlockedStages);
+    await fbSet(`clients/${clientId}/completedStages`, c.completedStages);
+  },
+
+  async completeStage(clientId, stageId) {
+    const c = S.clients[clientId]; if (!c) return;
+    c.completedStages = toArr(c.completedStages);
+    c.unlockedStages  = toArr(c.unlockedStages);
+    if (!c.completedStages.includes(stageId)) c.completedStages = [...c.completedStages, stageId];
+    // Авто-разблокировка следующего этапа
+    const stages = this.stagesMeta();
+    const cur = stages.findIndex(s=>s.id===stageId);
+    if (cur !== -1 && cur < stages.length - 1) {
+      const nextId = stages[cur+1].id;
+      if (!c.unlockedStages.includes(nextId)) c.unlockedStages = [...c.unlockedStages, nextId];
+    }
+    await fbSet(`clients/${clientId}/completedStages`, c.completedStages);
+    await fbSet(`clients/${clientId}/unlockedStages`,  c.unlockedStages);
+  },
+
+  async resetClient(clientId) {
+    if (!S.clients[clientId]) return;
+    S.clients[clientId].completedStages = [];
+    S.clients[clientId].unlockedStages  = ['intro'];
+    await fbSet(`clients/${clientId}/completedStages`, null); // null удаляет пустой массив корректно
+    await fbSet(`clients/${clientId}/unlockedStages`,  ['intro']);
+  },
+
+  async unlockAll(clientId) {
+    const all = DEFAULT_STAGES.map(s=>s.id);
+    if (S.clients[clientId]) S.clients[clientId].unlockedStages = all;
+    await fbSet(`clients/${clientId}/unlockedStages`, all);
+  },
+
+  async getAdminHash() { return fbGet('admin/passwordHash'); },
+  async setAdminPassword(pwd) { await fbSet('admin/passwordHash', await hashPwd(pwd)); }
+};
+
+// ================================================================
+// AUTH
+// ================================================================
+const Auth = {
+  session() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SK.SESSION));
+      if (!s) return null;
+      // Проверяем истечение сессии (7 дней)
+      if (s.exp && Date.now() > s.exp) { this.clear(); return null; }
+      return s;
+    } catch { return null; }
+  },
+  setSession(s) { localStorage.setItem(SK.SESSION, JSON.stringify({ ...s, exp: Date.now() + 86400000 * 7 })); },
+  clear() { localStorage.removeItem(SK.SESSION); },
+  isAdmin() { return !!this.session()?.isAdmin; },
+
+  async loginAdmin(pwd) {
+    const hash = await Data.getAdminHash();
+    if (!hash || !(await checkPwd(pwd, hash))) throw new Error('Неверный пароль');
+    this.setSession({ isAdmin:true, login:ADMIN_LOGIN });
+  },
+
+  async loginClient(login, pwd) {
+    const client = Data.clientByLogin(login);
+    if (!client) throw new Error('Пользователь не найден');
+    if (!(await checkPwd(pwd, client.passwordHash))) throw new Error('Неверный пароль');
+    this.setSession({ isAdmin:false, login:client.login, clientId:client.id });
+    return client;
+  },
+
+  logout() { this.clear(); }
+};
+
+// ================================================================
+// TOAST
+// ================================================================
+function toast(msg, type='ok') {
+  const t = document.getElementById('toast'), inner = document.getElementById('ti');
+  inner.textContent = msg;
+  inner.className = `px-5 py-3 rounded-2xl shadow-xl text-sm font-bold text-white ${type==='err'?'bg-red-500':'bg-slate-800'}`;
+  t.classList.remove('hidden');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.add('hidden'), 3000);
+}
+
+// ================================================================
+// VIDEO
+// ================================================================
+function videoEmbed(url) {
+  if (!url) return null;
+  // YouTube
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  if (yt) return { tp:'iframe', src:`https://www.youtube.com/embed/${yt[1]}?rel=0` };
+  // Vimeo
+  const vim = url.match(/vimeo\.com\/(\d+)/);
+  if (vim) return { tp:'iframe', src:`https://player.vimeo.com/video/${vim[1]}` };
+  // Rutube (обычные и приватные: /video/HASH/ или /video/private/HASH/?p=TOKEN)
+  const rt = url.match(/rutube\.ru\/video\/(?:private\/)?([a-zA-Z0-9]+)/);
+  if (rt) {
+    const rtP = url.match(/[?&]p=([^&]+)/);
+    return { tp:'iframe', src:`https://rutube.ru/play/embed/${rt[1]}/${rtP ? '?p='+rtP[1] : ''}` };
+  }
+  if (url.match(/rutube\.ru\/play\/embed\//)) return { tp:'iframe', src:url };
+  // Google Drive
+  const gd = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (gd) return { tp:'iframe', src:`https://drive.google.com/file/d/${gd[1]}/preview` };
+  // Прямой файл
+  if (url.match(/\.(mp4|webm|ogg|mov)(\?|$)/i) || url.startsWith('data:video')) return { tp:'video', src:url };
+  return { tp:'iframe', src:url };
+}
+
+function renderVideo(url) {
+  const e = videoEmbed(url);
+  if (!e) return `<div class="bg-slate-100 rounded-xl flex items-center justify-center" style="aspect-ratio:16/9">
+    <div class="text-center text-slate-400 p-6">
+      <svg class="w-14 h-14 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <p class="text-sm">Видео будет добавлено куратором</p>
+    </div></div>`;
+  if (e.tp==='iframe') return `<div class="vc"><iframe src="${e.src}" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe></div>`;
+  return `<div class="vc"><video src="${e.src}" controls></video></div>`;
+}
+
+// ================================================================
+// ROUTER
+// ================================================================
+let VIEW = 'loading', PARAMS = {};
+let realtimeSub = null;
+let clientSyncSub = null;
+
+function go(view, params={}) {
+  const adminViews = ['adminDashboard','adminClient','adminStage','adminSettings'];
+  const clientViews = ['dashboard','stage'];
+  if (!adminViews.includes(view)) stopRealtimeSync();
+  if (!clientViews.includes(view)) stopClientSync();
+  VIEW = view; PARAMS = params;
+  render();
+  window.scrollTo(0,0);
+}
+
+function startRealtimeSync() {
+  if (realtimeSub) return;
+  // Polling каждые 5 секунд — обновляем DOM только если данные изменились
+  realtimeSub = setInterval(async () => {
+    if (document.hidden) return;
+    if (!['adminDashboard','adminClient'].includes(VIEW)) return;
+    try {
+      const prev = JSON.stringify(S.clients);
+      await Data.refreshClients();
+      if (JSON.stringify(S.clients) === prev) return; // данные не изменились — не перерисовывать
+      const app = document.getElementById('app');
+      if (!app) return;
+      if (VIEW === 'adminDashboard') {
+        // Не перерисовывать если открыто модальное окно — пользователь заполняет форму
+        const modal = document.getElementById('addModal');
+        if (modal && !modal.classList.contains('hidden')) return;
+        app.innerHTML = vAdminDash(); initAdminForms();
+      } else if (VIEW === 'adminClient') { app.innerHTML = vAdminClient(); }
+    } catch(e) { /* игнорировать ошибки polling */ }
+  }, 5000);
+}
+
+function stopRealtimeSync() {
+  if (realtimeSub) { clearInterval(realtimeSub); realtimeSub = null; }
+}
+
+// Лёгкий polling для клиентов — проверяет раз в 30 сек обновился ли их доступ
+function startClientSync() {
+  if (clientSyncSub) return;
+  clientSyncSub = setInterval(async () => {
+    if (document.hidden) return;
+    if (!['dashboard','stage'].includes(VIEW)) return;
+    const sess = Auth.session();
+    if (!sess || sess.isAdmin) return;
+    try {
+      const prev = JSON.stringify(S.clients[sess.clientId]);
+      await Data.refreshClients();
+      const next = JSON.stringify(S.clients[sess.clientId]);
+      if (next === prev) return;
+      // Данные клиента изменились — обновить дашборд (но не перерисовывать stage с видео)
+      if (VIEW === 'dashboard') { document.getElementById('app').innerHTML = vClientDash(); }
+    } catch(e) {}
+  }, 30000);
+}
+
+function stopClientSync() {
+  if (clientSyncSub) { clearInterval(clientSyncSub); clientSyncSub = null; }
+}
+
+// ================================================================
+// ICONS
+// ================================================================
+const I = {
+  lock:`<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>`,
+  check:`<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>`,
+  play:`<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
+  back:`<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>`,
+  arrow:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>`,
+  logout:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>`,
+  plus:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>`,
+  trash:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`,
+  link:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>`,
+  file:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>`,
+  txt:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`,
+  vid:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.361a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>`,
+  book:`<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>`,
+  refresh:`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>`,
+  signal:`<svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>`,
+  edit:`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>`
+};
+
+// ================================================================
+// VIEW — SETUP WIZARD
+// ================================================================
+function vSetup() {
+  return `
+  <div class="min-h-screen bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 p-4 flex items-start justify-center py-10">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg fi">
+      <div class="p-8 border-b border-slate-100">
+        <div class="inline-flex items-center justify-center w-14 h-14 bg-brand-100 rounded-2xl mb-4">${I.book}</div>
+        <h1 class="text-2xl font-extrabold text-slate-900">Настройка базы данных</h1>
+        <p class="text-slate-500 text-sm mt-1">Одноразовая настройка Firebase — займёт ~10 минут. После этого сайт полностью готов к работе.</p>
+      </div>
+
+      <div class="p-8 space-y-6">
+        <!-- Steps -->
+        <div class="space-y-4">
+          ${[
+            ['1', 'Перейдите на', 'https://console.firebase.google.com', 'console.firebase.google.com', 'и войдите через Google-аккаунт'],
+            ['2', 'Нажмите', null, null, '<strong>«Добавить проект»</strong> → введите любое название → отключите Google Analytics (не нужно) → создайте проект'],
+            ['3', 'В левом меню выберите', null, null, '<strong>«Realtime Database»</strong> → «Создать базу данных» → выберите регион <em>europe-west1</em> → режим <strong>«Тест»</strong>'],
+            ['4', 'Нажмите значок шестерёнки ⚙️ рядом с «Обзор проекта»', null, null, '→ <strong>«Настройки проекта»</strong> → прокрутите вниз до раздела <strong>«Ваши приложения»</strong> → нажмите значок <strong>&lt;/&gt;</strong> (веб) → зарегистрируйте приложение → скопируйте блок <code class="bg-slate-100 px-1 rounded text-xs">firebaseConfig</code>'],
+          ].map(([num, pre, href, linkTxt, post]) => `
+            <div class="flex gap-3">
+              <div class="w-7 h-7 rounded-full bg-brand-100 text-brand-700 font-extrabold text-sm flex items-center justify-center flex-shrink-0 mt-0.5">${num}</div>
+              <p class="text-sm text-slate-600 leading-relaxed">
+                ${pre} ${href ? `<a href="${href}" target="_blank" class="text-brand-600 font-semibold underline">${linkTxt}</a>` : ''} ${post}
+              </p>
+            </div>`).join('')}
+        </div>
+
+        <div class="bg-slate-50 rounded-2xl p-4 text-xs text-slate-500">
+          <p class="font-bold text-slate-700 mb-2">Скопированный конфиг выглядит примерно так:</p>
+          <pre class="font-mono text-[11px] leading-relaxed text-slate-600 overflow-x-auto">const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "my-project.firebaseapp.com",
+  databaseURL: "https://my-project-default-rtdb...",
+  projectId: "my-project",
+  storageBucket: "my-project.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123..."
+};</pre>
+        </div>
+
+        <!-- Step 5: Paste config -->
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-2">5. Вставьте конфиг сюда (весь блок или только объект {})</label>
+          <textarea id="fbConfigInput" rows="8" placeholder='Вставьте firebaseConfig здесь...'
+            class="w-full font-mono text-xs px-4 py-3 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none resize-none transition bg-slate-50"></textarea>
+          <div id="configErr" class="hidden mt-2 text-red-600 text-xs bg-red-50 px-3 py-2 rounded-xl"></div>
+        </div>
+
+        <button onclick="saveConfig()"
+          class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 rounded-xl transition text-sm">
+          Подключить и запустить →
+        </button>
+
+        <!-- Manual fields fallback (shown if auto-parse fails) -->
+        <div id="manualFields" class="hidden mt-4 border-t border-slate-200 pt-4">
+          <p class="text-sm font-bold text-slate-700 mb-3">Или введите значения вручную:</p>
+          <div class="space-y-2">
+            ${[
+              ['mf_apiKey','apiKey','AIzaSy...'],
+              ['mf_authDomain','authDomain','project.firebaseapp.com'],
+              ['mf_databaseURL','databaseURL','https://project-default-rtdb.europe-west1.firebasedatabase.app'],
+              ['mf_projectId','projectId','project-id'],
+              ['mf_storageBucket','storageBucket','project.appspot.com'],
+              ['mf_messagingSenderId','messagingSenderId','123456789'],
+              ['mf_appId','appId','1:123:web:abc'],
+            ].map(([id,label,ph])=>`
+              <div class="flex items-center gap-2">
+                <label class="text-xs font-mono text-slate-500 w-36 flex-shrink-0">${label}</label>
+                <input id="${id}" type="text" placeholder="${ph}"
+                  class="flex-1 px-3 py-2 rounded-lg border border-slate-200 focus:border-brand-500 outline-none text-xs font-mono transition">
+              </div>`).join('')}
+          </div>
+          <button onclick="saveManualConfig()"
+            class="mt-3 w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition text-sm">
+            Подключить →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — LOGIN
+// ================================================================
+function vLogin() {
+  return `
+  <div class="min-h-screen bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm fi">
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 bg-brand-100 rounded-2xl mb-4 text-brand-600">${I.book}</div>
+        <h1 class="text-2xl font-extrabold text-slate-900">УК «Консилиум»</h1>
+        <p class="text-slate-500 mt-1 text-sm">Обучение Проектной методологии</p>
+      </div>
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Логин</label>
+          <input id="li" type="text" placeholder="Введите логин" autocomplete="username"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Пароль</label>
+          <div class="relative">
+            <input id="pi" type="password" placeholder="Введите пароль" autocomplete="current-password"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition pr-12">
+            <button type="button" onclick="togglePwd()" class="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-600 transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="loginErr" class="hidden bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-2.5 rounded-xl"></div>
+        <button type="submit" id="loginBtn"
+          class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 text-sm">
+          Войти <span class="opacity-70">${I.arrow}</span>
+        </button>
+      </form>
+      <p class="text-center text-xs text-slate-400 mt-6">Доступ предоставляется куратором</p>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — CLIENT DASHBOARD
+// ================================================================
+function vClientDash() {
+  const sess = Auth.session();
+  const client = Data.client(sess?.clientId);
+  if (!client) { Auth.logout(); go('login'); return ''; }
+
+  const stages = Data.stages();
+  const done = (client.completedStages||[]).length, total = stages.length;
+  const pct = Math.round(done/total*100);
+
+  const cards = stages.map(stage => {
+    const unlocked = (client.unlockedStages||[]).includes(stage.id);
+    const completed = (client.completedStages||[]).includes(stage.id);
+    const current = unlocked && !completed;
+    let bg, icon, badge, badgeTxt;
+    if (completed) {
+      bg='border-emerald-200 bg-emerald-50 hover:border-emerald-300 cursor-pointer';
+      icon=`<div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 text-emerald-600">${I.check}</div>`;
+      badge='bg-emerald-100 text-emerald-700'; badgeTxt='Завершён';
+    } else if (current) {
+      bg='border-brand-300 bg-white cursor-pointer shadow-sm shadow-brand-100 hover:shadow-md hover:border-brand-400';
+      icon=`<div class="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0 text-brand-600">${I.play}</div>`;
+      badge='bg-brand-100 text-brand-700'; badgeTxt='Открыт';
+    } else {
+      bg='border-slate-200 bg-slate-50/80 opacity-55';
+      icon=`<div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0 text-slate-400">${I.lock}</div>`;
+      badge='bg-slate-100 text-slate-500'; badgeTxt='Заблокирован';
+    }
+    return `
+    <div class="border-2 ${bg} rounded-2xl p-4 transition-all duration-200" ${(unlocked||completed)?`onclick="go('stage',{stageId:'${stage.id}'})"`:''}>
+      <div class="flex items-center gap-3">
+        ${icon}
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-1.5 mb-0.5">
+            <span class="text-[11px] font-bold uppercase tracking-wide ${badge} px-2 py-0.5 rounded-full">${badgeTxt}</span>
+            <span class="text-xs text-slate-400">${stage.label}${stage.duration?' · '+stage.duration:''}</span>
+          </div>
+          <p class="font-semibold text-slate-800 text-sm leading-snug">${esc(stage.title)}</p>
+          <p class="text-xs text-slate-400 mt-0.5">${esc(stage.topics?.[0]||'')}</p>
+        </div>
+        ${(unlocked||completed)?`<span class="text-slate-300 flex-shrink-0">${I.arrow}</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-white border-b border-slate-100 sticky top-0 z-10">
+      <div class="max-w-xl mx-auto px-4 py-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center text-brand-600">${I.book}</div>
+          <div>
+            <div class="text-sm font-bold text-slate-900">УК «Консилиум»</div>
+            <div class="text-xs text-slate-400">${esc(client.name)}</div>
+          </div>
+        </div>
+        <button onclick="Auth.logout();go('login')" class="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 transition font-medium">${I.logout} Выйти</button>
+      </div>
+    </div>
+    <div class="max-w-xl mx-auto px-4 py-5 fi">
+      <div class="bg-gradient-to-br from-brand-700 to-brand-600 rounded-2xl p-5 mb-5 text-white">
+        <div class="flex items-end justify-between mb-3">
+          <div>
+            <p class="text-brand-200 text-xs font-medium mb-1">Прогресс обучения</p>
+            <p class="text-4xl font-extrabold">${pct}<span class="text-2xl">%</span></p>
+          </div>
+          <div class="text-right">
+            <p class="text-brand-200 text-xs mb-1">Этапов пройдено</p>
+            <p class="text-2xl font-bold">${done}<span class="text-brand-300 font-normal text-lg"> / ${total}</span></p>
+          </div>
+        </div>
+        <div class="bg-brand-800/60 rounded-full h-2 overflow-hidden">
+          <div class="bg-white rounded-full h-2 transition-all duration-1000" style="width:${pct}%"></div>
+        </div>
+        ${client.company?`<p class="text-brand-300 text-xs mt-3">${esc(client.company)}</p>`:''}
+      </div>
+      <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Программа обучения</p>
+      <div class="space-y-2.5">${cards}</div>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — STAGE DETAIL (CLIENT)
+// ================================================================
+function vStage() {
+  const sess = Auth.session();
+  const client = Data.client(sess?.clientId);
+  const stage = Data.stage(PARAMS.stageId);
+  if (!client || !stage) { go('dashboard'); return ''; }
+  const unlocked = (client.unlockedStages||[]).includes(stage.id);
+  const completed = (client.completedStages||[]).includes(stage.id);
+  if (!unlocked && !completed) { go('dashboard'); return ''; }
+
+  const topics = stage.topics.map(t=>`
+    <li class="flex items-start gap-2 text-sm text-slate-600">
+      <svg class="w-4 h-4 text-brand-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>${t}
+    </li>`).join('');
+
+  const arts = (stage.artifacts||[]).map(a => {
+    if (a.type==='text') return `
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm mb-2">${I.txt} ${esc(a.name)}</div>
+        <p class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${esc(a.content)}</p>
+      </div>`;
+    const href = a.type==='link'?a.url:a.content;
+    return `
+      <a href="${esc(href)}" target="_blank" rel="noopener"
+        class="flex items-center gap-3 bg-white border border-slate-200 hover:border-brand-300 hover:shadow-sm rounded-xl p-4 transition group">
+        <div class="w-9 h-9 rounded-lg bg-brand-50 group-hover:bg-brand-100 text-brand-600 flex items-center justify-center flex-shrink-0 transition">${a.type==='link'?I.link:I.file}</div>
+        <div class="flex-1 min-w-0">
+          <p class="font-semibold text-sm text-slate-800 truncate">${esc(a.name)}</p>
+          <p class="text-xs text-slate-400">${a.type==='link'?'Открыть ссылку':'Скачать файл'}</p>
+        </div>
+        <span class="text-slate-300 group-hover:text-brand-400 transition">${I.arrow}</span>
+      </a>`;
+  }).join('');
+
+  const cta = completed
+    ? `<div class="flex items-center justify-center gap-2 w-full bg-emerald-50 border-2 border-emerald-200 text-emerald-700 font-bold py-4 rounded-2xl mt-5 text-sm">${I.check} Этап завершён — отличная работа!</div>`
+    : `<button onclick="clientCompleteStage('${stage.id}')"
+         class="w-full bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 mt-5 transition text-sm">
+         ${I.check} Отметить этап как выполненный
+       </button>`;
+
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-white border-b border-slate-100 sticky top-0 z-10">
+      <div class="max-w-xl mx-auto px-4 py-3.5 flex items-center gap-3">
+        <button onclick="go('dashboard')" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition">${I.back}</button>
+        <div class="min-w-0">
+          <p class="text-xs text-slate-400">${stage.label}</p>
+          <p class="text-sm font-bold text-slate-900 leading-tight truncate">${stage.title}</p>
+        </div>
+      </div>
+    </div>
+    <div class="max-w-xl mx-auto px-4 py-5 fi">
+      ${renderVideo(stage.videoUrl)}
+      <div class="bg-white rounded-2xl border border-slate-100 p-5 mt-4">
+        <p class="font-bold text-slate-800 mb-3 flex items-center gap-2 text-sm">
+          <svg class="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>Темы этапа
+        </p>
+        <ul class="space-y-2">${topics}</ul>
+        ${stage.duration?`<p class="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100">⏱ Длительность: ${stage.duration}</p>`:''}
+      </div>
+      ${arts?`<div class="mt-4"><p class="font-bold text-slate-800 mb-3 text-sm">Материалы к этапу</p><div class="space-y-2">${arts}</div></div>`:''}
+      ${cta}
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — ADMIN DASHBOARD (real-time)
+// ================================================================
+function vAdminDash() {
+  const clients = Data.clients();
+  const stages = Data.stages();
+
+  const clientCards = clients.length === 0
+    ? `<div class="text-center py-10 text-slate-400"><div class="text-4xl mb-3">👥</div><p class="text-sm">Нет клиентов. Добавьте первого!</p></div>`
+    : clients.map(c => {
+        const done=(c.completedStages||[]).length, pct=Math.round(done/stages.length*100);
+        return `
+        <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
+          <div class="flex items-center justify-between mb-2">
+            <div class="min-w-0">
+              <p class="font-semibold text-sm text-slate-800">${esc(c.name)}</p>
+              <p class="text-xs text-slate-400">${esc(c.company)||'—'} · @${esc(c.login)}</p>
+            </div>
+            <div class="text-right flex-shrink-0 ml-3">
+              <p class="text-xl font-extrabold text-brand-600">${pct}%</p>
+              <p class="text-xs text-slate-400">${done}/${stages.length} этапов</p>
+            </div>
+          </div>
+          <div class="bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div class="bg-brand-500 h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+      }).join('');
+
+  const stageCards = stages.map(s=>`
+    <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm flex items-center gap-3">
+      <div onclick="go('adminStage',{stageId:'${s.id}'})" class="w-9 h-9 rounded-lg ${s.videoUrl?'bg-brand-50 text-brand-600':'bg-slate-100 text-slate-400'} flex items-center justify-center flex-shrink-0 cursor-pointer">${I.vid}</div>
+      <div onclick="go('adminStage',{stageId:'${s.id}'})" class="flex-1 min-w-0 cursor-pointer">
+        <p class="text-sm font-semibold text-slate-800 truncate">${esc(s.title)}</p>
+        <p class="text-xs text-slate-400">${esc(s.label)} · ${s.videoUrl?'✅ Видео есть':'⚠️ Видео нет'} · ${s.artifacts?.length||0} материалов</p>
+      </div>
+      <button onclick="event.stopPropagation();openEditStageMeta('${s.id}')" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-brand-600 hover:bg-brand-50 transition" title="Переименовать">${I.edit}</button>
+      <span onclick="go('adminStage',{stageId:'${s.id}'})" class="text-slate-300 cursor-pointer flex-shrink-0">${I.arrow}</span>
+    </div>`).join('');
+
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-gradient-to-r from-brand-800 to-brand-700 text-white">
+      <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </div>
+          <div>
+            <p class="font-bold text-sm">Панель администратора</p>
+            <p class="text-brand-300 text-xs flex items-center gap-1.5">
+              <span class="text-emerald-400 animate-pulse">${I.signal}</span> Обновляется в реальном времени
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-4">
+          <button onclick="go('adminSettings')" class="text-brand-300 hover:text-white text-xs transition">Настройки</button>
+          <button onclick="Auth.logout();go('login')" class="text-brand-300 hover:text-white flex items-center gap-1 text-xs transition">${I.logout} Выйти</button>
+        </div>
+      </div>
+    </div>
+    <div class="max-w-3xl mx-auto px-4 py-5 fi">
+      <div class="grid grid-cols-3 gap-3 mb-6">
+        ${[['Клиентов',clients.length,'👥'],['Этапов',stages.length,'📚'],['Видео',stages.filter(s=>s.videoUrl).length,'🎬']].map(([label,val,emoji])=>`
+          <div class="bg-white rounded-2xl border border-slate-100 p-4 text-center">
+            <p class="text-3xl font-extrabold text-brand-600">${val}</p>
+            <p class="text-xs text-slate-500 mt-1">${emoji} ${label}</p>
+          </div>`).join('')}
+      </div>
+
+      <div class="flex items-center justify-between mb-3">
+        <p class="font-bold text-slate-800">Клиенты</p>
+        <button onclick="document.getElementById('addModal').classList.remove('hidden')"
+          class="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition">
+          ${I.plus} Добавить клиента
+        </button>
+      </div>
+      <div class="space-y-2 mb-6">${clientCards}</div>
+
+      <p class="font-bold text-slate-800 mb-3">Этапы обучения</p>
+      <div class="space-y-2">${stageCards}</div>
+      <button onclick="openAddStage()" class="w-full mt-3 py-3 border-2 border-dashed border-slate-200 hover:border-brand-400 rounded-xl text-sm text-slate-400 hover:text-brand-600 transition flex items-center justify-center gap-2">
+        ${I.plus} Добавить этап
+      </button>
+    </div>
+  </div>
+
+  <!-- Edit Stage Meta Modal -->
+  <div id="editStageMetaModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+      <h3 class="font-bold text-slate-800 mb-4">Редактировать этап</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Название этапа</label>
+          <input id="editStageTitle" type="text" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Метка (напр. «Этап 1»)</label>
+          <input id="editStageLabel" type="text" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent">
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="saveEditStageMeta()" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white rounded-xl py-2.5 text-sm font-semibold transition">Сохранить</button>
+        <button onclick="document.getElementById('editStageMetaModal').classList.add('hidden')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl py-2.5 text-sm font-semibold transition">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Stage Modal -->
+  <div id="addStageModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+      <h3 class="font-bold text-slate-800 mb-4">Новый этап</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Название</label>
+          <input id="newStageTitle" type="text" placeholder="Например: Управление командой" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Метка</label>
+          <input id="newStageLabel" type="text" placeholder="Например: Этап 9" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent">
+        </div>
+        <div id="addStageErr" class="hidden text-red-600 text-xs bg-red-50 px-3 py-2 rounded-xl"></div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="saveAddStage()" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white rounded-xl py-2.5 text-sm font-semibold transition">Создать</button>
+        <button onclick="document.getElementById('addStageModal').classList.add('hidden')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl py-2.5 text-sm font-semibold transition">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Client Modal -->
+  <div id="addModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl w-full max-w-sm p-6 fi">
+      <h3 class="text-lg font-extrabold text-slate-900 mb-4">Новый клиент</h3>
+      <form id="addClientForm" class="space-y-3">
+        <input id="nc_name" type="text" placeholder="Имя руководителя проектов *"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+        <input id="nc_company" type="text" placeholder="Компания"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+        <input id="nc_login" type="text" placeholder="Логин *"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+        <input id="nc_pwd" type="text" placeholder="Пароль *"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+        <div id="addClientErr" class="hidden text-red-600 text-xs bg-red-50 px-3 py-2 rounded-xl"></div>
+        <div class="flex gap-2 pt-1">
+          <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')"
+            class="flex-1 border border-slate-200 text-slate-600 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-50 transition">Отмена</button>
+          <button type="submit" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white py-2.5 rounded-xl text-sm font-bold transition">Добавить</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — ADMIN CLIENT DETAIL
+// ================================================================
+function vAdminClient() {
+  const client = Data.client(PARAMS.clientId);
+  if (!client) { go('adminDashboard'); return ''; }
+
+  const stages = Data.stages();
+  const done=(client.completedStages||[]).length, pct=Math.round(done/stages.length*100);
+
+  const rows = stages.map(stage=>{
+    const unlocked=(client.unlockedStages||[]).includes(stage.id);
+    const completed=(client.completedStages||[]).includes(stage.id);
+    let status, statusCls;
+    if (completed) { status='✅ Завершён'; statusCls='text-emerald-600'; }
+    else if (unlocked) { status='▶️ Открыт'; statusCls='text-brand-600'; }
+    else { status='🔒 Заблокирован'; statusCls='text-slate-400'; }
+    return `
+    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-slate-800">${stage.label}: ${stage.title}</p>
+        <p class="text-xs mt-0.5 font-medium ${statusCls}">${status}</p>
+      </div>
+      <div class="flex gap-2 flex-shrink-0">
+        ${!unlocked
+          ? `<button onclick="adminUnlockStage('${client.id}','${stage.id}')"
+               class="text-xs bg-brand-600 hover:bg-brand-700 text-white px-3 py-1.5 rounded-lg font-bold transition">Открыть</button>`
+          : `<button onclick="adminLockStage('${client.id}','${stage.id}')"
+               class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium transition">Закрыть</button>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-gradient-to-r from-brand-800 to-brand-700 text-white">
+      <div class="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+        <button onclick="go('adminDashboard')" class="w-9 h-9 rounded-xl bg-brand-600 hover:bg-brand-500 flex items-center justify-center transition">${I.back}</button>
+        <div>
+          <p class="font-bold text-sm">${esc(client.name)}</p>
+          <p class="text-brand-300 text-xs">${esc(client.company)||'—'} · @${esc(client.login)}</p>
+        </div>
+      </div>
+    </div>
+    <div class="max-w-2xl mx-auto px-4 py-5 fi">
+      <div class="bg-white border border-slate-100 rounded-2xl p-5 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-bold text-slate-700">Прогресс</p>
+          <p class="text-xl font-extrabold text-brand-600">${pct}% (${done}/${stages.length} этапов)</p>
+        </div>
+        <div class="bg-slate-100 rounded-full h-2 overflow-hidden">
+          <div class="bg-brand-500 h-2 rounded-full" style="width:${pct}%"></div>
+        </div>
+        <p class="text-xs text-emerald-600 mt-2 flex items-center gap-1">
+          <span class="animate-pulse">${I.signal}</span> Обновляется автоматически когда клиент проходит этапы
+        </p>
+      </div>
+
+      <div class="bg-white border border-slate-100 rounded-2xl p-4 mb-5 flex flex-wrap gap-2">
+        <button onclick="adminUnlockAll('${client.id}')"
+          class="text-xs bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 px-4 py-2 rounded-xl font-semibold transition">
+          🔓 Открыть все этапы
+        </button>
+        <button onclick="adminResetClient('${client.id}')"
+          class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl font-semibold transition">
+          🔄 Сбросить прогресс
+        </button>
+        <button onclick="adminChangeClientPwd('${client.id}')"
+          class="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 px-4 py-2 rounded-xl font-semibold transition">
+          🔑 Сменить пароль
+        </button>
+        <button onclick="adminDeleteClient('${client.id}')"
+          class="text-xs bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-xl font-semibold transition">
+          ${I.trash} Удалить
+        </button>
+      </div>
+
+      <p class="font-bold text-slate-800 mb-3 text-sm">Управление доступом к этапам</p>
+      <div class="space-y-2">${rows}</div>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — ADMIN STAGE EDITOR
+// ================================================================
+let artType = 'link';
+
+function vAdminStage() {
+  const stage = Data.stage(PARAMS.stageId);
+  if (!stage) { go('adminDashboard'); return ''; }
+
+  const artRows = (stage.artifacts||[]).map((a,idx)=>`
+    <div class="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3">
+      <div class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 flex-shrink-0">
+        ${a.type==='link'?I.link:a.type==='text'?I.txt:I.file}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-slate-800 truncate">${esc(a.name)}</p>
+        <p class="text-xs text-slate-400">${a.type==='link'?'Ссылка':a.type==='text'?'Задание':'Файл'}</p>
+      </div>
+      <button onclick="removeArtifact('${stage.id}',${idx})" class="text-slate-300 hover:text-red-500 transition">${I.trash}</button>
+    </div>`).join('');
+
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-gradient-to-r from-brand-800 to-brand-700 text-white">
+      <div class="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+        <button onclick="go('adminDashboard')" class="w-9 h-9 rounded-xl bg-brand-600 hover:bg-brand-500 flex items-center justify-center transition">${I.back}</button>
+        <div>
+          <p class="font-bold text-sm">Редактор этапа</p>
+          <p class="text-brand-300 text-xs">${stage.label}: ${stage.title}</p>
+        </div>
+      </div>
+    </div>
+    <div class="max-w-2xl mx-auto px-4 py-5 space-y-4 fi">
+      <!-- Video -->
+      <div class="bg-white rounded-2xl border border-slate-100 p-5">
+        <p class="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm">${I.vid} Видео</p>
+        ${stage.videoUrl?`<div class="mb-4">${renderVideo(stage.videoUrl)}</div>`:''}
+        <div class="mb-3">
+          <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Ссылка на видео</label>
+          <p class="text-xs text-slate-400 mb-2">YouTube, Google Drive, Vimeo или прямая ссылка на MP4</p>
+          <div class="flex gap-2">
+            <input type="url" id="vurl_${stage.id}" value="${stage.videoUrl||''}"
+              placeholder="https://youtube.com/watch?v=..."
+              class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+            <button onclick="saveVideoUrl('${stage.id}')"
+              class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition whitespace-nowrap">Сохранить</button>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Или загрузить файл (до 100 МБ)</label>
+          <p class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">⚠️ Для длинных видео (47+ мин) используйте YouTube unlisted — загрузка файлом не подходит.</p>
+          <label class="flex items-center gap-3 border-2 border-dashed border-slate-200 hover:border-brand-300 rounded-xl p-4 cursor-pointer transition">
+            <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+            <div>
+              <p class="text-sm font-semibold text-slate-600">Нажмите для загрузки</p>
+              <p class="text-xs text-slate-400">MP4, WebM, MOV · до 100 МБ</p>
+            </div>
+            <input type="file" accept="video/*" class="hidden" onchange="uploadVideoFile(event,'${stage.id}')">
+          </label>
+        </div>
+      </div>
+
+      <!-- Artifacts -->
+      <div class="bg-white rounded-2xl border border-slate-100 p-5">
+        <p class="font-bold text-slate-800 mb-4 text-sm flex items-center gap-2">
+          <svg class="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+          Материалы к этапу
+        </p>
+        ${artRows?`<div class="space-y-2 mb-4">${artRows}</div>`:''}
+        <div class="border-2 border-dashed border-slate-200 rounded-2xl p-4">
+          <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Добавить материал</p>
+          <div class="flex gap-2 mb-3" id="artTypeTabs">
+            <button onclick="setArtType('link')" data-type="link"
+              class="flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-xl border-2 border-brand-500 bg-brand-50 text-brand-700 font-bold transition">
+              ${I.link} Ссылка
+            </button>
+            <button onclick="setArtType('file')" data-type="file"
+              class="flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-xl border-2 border-slate-200 text-slate-500 font-semibold transition">
+              ${I.file} Файл
+            </button>
+            <button onclick="setArtType('text')" data-type="text"
+              class="flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-xl border-2 border-slate-200 text-slate-500 font-semibold transition">
+              ${I.txt} Задание
+            </button>
+          </div>
+          <input id="artName" type="text" placeholder="Название материала"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm mb-2 transition">
+          <div id="artIn_link">
+            <input id="artUrl" type="url" placeholder="https://..."
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+          </div>
+          <div id="artIn_file" class="hidden">
+            <label class="flex items-center gap-2 border border-slate-200 hover:border-brand-300 rounded-xl p-3 cursor-pointer transition">
+              ${I.file}
+              <span id="fileNameLabel" class="text-sm text-slate-500">Выбрать файл (PDF, Excel, Word — до 8 МБ)</span>
+              <input type="file" id="artFile" accept=".pdf,.xlsx,.xls,.doc,.docx" class="hidden" onchange="updateFileLbl()">
+            </label>
+          </div>
+          <div id="artIn_text" class="hidden">
+            <textarea id="artText" rows="4" placeholder="Задание для клиента по итогам просмотра видео..."
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm resize-none transition"></textarea>
+          </div>
+          <button onclick="addArtifact('${stage.id}')"
+            class="mt-2.5 w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-sm font-bold transition">
+            Добавить материал
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// VIEW — ADMIN SETTINGS
+// ================================================================
+function vAdminSettings() {
+  return `
+  <div class="min-h-screen bg-slate-50">
+    <div class="bg-gradient-to-r from-brand-800 to-brand-700 text-white">
+      <div class="max-w-xl mx-auto px-4 py-4 flex items-center gap-3">
+        <button onclick="go('adminDashboard')" class="w-9 h-9 rounded-xl bg-brand-600 hover:bg-brand-500 flex items-center justify-center transition">${I.back}</button>
+        <p class="font-bold text-sm">Настройки</p>
+      </div>
+    </div>
+    <div class="max-w-xl mx-auto px-4 py-5 fi space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-100 p-5">
+        <p class="font-bold text-slate-800 mb-3 text-sm">Сменить пароль администратора</p>
+        <p class="text-xs text-slate-500 mb-3">Логин администратора: <code class="bg-slate-100 px-1.5 py-0.5 rounded-lg font-mono font-bold">admin</code></p>
+        <form id="changePwdForm" class="space-y-2">
+          <input id="newAdminPwd" type="password" placeholder="Новый пароль"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+          <input id="newAdminPwd2" type="password" placeholder="Повторите пароль"
+            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
+          <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white py-2.5 rounded-xl text-sm font-bold transition">Сохранить пароль</button>
+        </form>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-100 p-5">
+        <p class="font-bold text-slate-800 mb-3 text-sm">Firebase подключение</p>
+        <p class="text-xs text-slate-500 mb-3">База данных подключена. Все данные хранятся в Firebase — доступны с любого устройства.</p>
+        <button onclick="if(confirm('Сбросить настройки Firebase? Данные в базе останутся, но нужно будет заново ввести конфиг.')){localStorage.removeItem('${SK.CONFIG}');location.reload();}"
+          class="text-xs bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-xl font-semibold transition">
+          Сбросить конфигурацию Firebase
+        </button>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-700">
+        <p class="font-bold mb-1">🎥 Про хранение видео</p>
+        <p class="leading-relaxed">Для длинных видео (47+ мин) загружайте на <strong>YouTube как «Непубличные»</strong> — клиент не найдёт без ссылки. Вставьте ссылку в редактор этапа.</p>
+        <p class="font-bold mt-2 mb-1">🌐 Размещение сайта</p>
+        <p class="leading-relaxed">Откройте <a href="https://netlify.com" target="_blank" class="underline font-bold">netlify.com</a> → зарегистрируйтесь → перетащите этот HTML-файл → получите ссылку вида <em>yourname.netlify.app</em> → отправляйте клиентам.</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// RENDER
+// ================================================================
+function render() {
+  const app = document.getElementById('app');
+  const sess = Auth.session();
+  if (!sess) { app.innerHTML = vLogin(); initLoginForm(); return; }
+  if (sess.isAdmin) {
+    const views = { adminDashboard:vAdminDash, adminClient:vAdminClient, adminStage:vAdminStage, adminSettings:vAdminSettings };
+    app.innerHTML = (views[VIEW]||vAdminDash)();
+    startRealtimeSync(); // единая подписка для всех admin-страниц
+    if (VIEW==='adminDashboard') initAdminForms();
+    if (VIEW==='adminSettings') initSettingsForm();
+    if (VIEW==='adminStage') artType='link';
+  } else {
+    const views = { dashboard:vClientDash, stage:vStage };
+    app.innerHTML = (views[VIEW]||vClientDash)();
+    startClientSync(); // проверяет обновления доступа раз в 30 сек
+  }
+}
+
+// ================================================================
+// FORM INITS
+// ================================================================
+function initLoginForm() {
+  const form = document.getElementById('loginForm');
+  if (!form || form._bound) return; // предотвращает множественные обработчики
+  form._bound = true;
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const login = document.getElementById('li').value.trim();
+    const pwd = document.getElementById('pi').value;
+    const err = document.getElementById('loginErr');
+    const btn = document.getElementById('loginBtn');
+    err.classList.add('hidden');
+    btn.disabled=true; btn.innerHTML=`<span class="sp">↻</span>`;
+    try {
+      if (login===ADMIN_LOGIN) { await Auth.loginAdmin(pwd); VIEW='adminDashboard'; }
+      else { await Auth.loginClient(login, pwd); VIEW='dashboard'; }
+      render();
+    } catch(ex) {
+      const msg = (ex && ex.message && typeof ex.message === 'string') ? ex.message : 'Ошибка входа. Попробуйте ещё раз.';
+      err.textContent=msg; err.classList.remove('hidden');
+      btn.disabled=false; btn.innerHTML=`Войти <span class="opacity-70">${I.arrow}</span>`;
+    }
+  });
+}
+
+function initAdminForms() {
+  const form = document.getElementById('addClientForm');
+  if (!form) return;
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const name=document.getElementById('nc_name').value.trim();
+    const company=document.getElementById('nc_company').value.trim();
+    const login=document.getElementById('nc_login').value.trim().toLowerCase();
+    const pwd=document.getElementById('nc_pwd').value;
+    const err=document.getElementById('addClientErr');
+    err.classList.add('hidden');
+    if (!name||!login||!pwd) { err.textContent='Заполните обязательные поля'; err.classList.remove('hidden'); return; }
+    if (login.length < 3) { err.textContent='Логин: минимум 3 символа'; err.classList.remove('hidden'); return; }
+    if (pwd.length < 4) { err.textContent='Пароль: минимум 4 символа'; err.classList.remove('hidden'); return; }
+    const btn = form.querySelector('[type=submit]');
+    btn.disabled=true; btn.textContent='Добавление...';
+    try {
+      await Data.addClient(name, company, login, pwd);
+      document.getElementById('addModal').classList.add('hidden');
+      form.reset();
+      toast(`Клиент ${esc(name)} добавлен!`);
+      render(); // сразу показать нового клиента
+    } catch(ex) {
+      err.textContent=ex.message||'Ошибка. Попробуйте ещё раз.';
+      err.classList.remove('hidden');
+    } finally {
+      btn.disabled=false; btn.textContent='Добавить';
+    }
+  });
+}
+
+function initSettingsForm() {
+  document.getElementById('changePwdForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const p1=document.getElementById('newAdminPwd').value;
+    const p2=document.getElementById('newAdminPwd2').value;
+    if (!p1) { toast('Введите новый пароль','err'); return; }
+    if (p1.length < 4) { toast('Пароль должен быть минимум 4 символа','err'); return; }
+    if (p1!==p2) { toast('Пароли не совпадают','err'); return; }
+    await Data.setAdminPassword(p1);
+    toast('Пароль изменён!');
+    document.getElementById('newAdminPwd').value='';
+    document.getElementById('newAdminPwd2').value='';
+  });
+}
+
+// ================================================================
+// GLOBAL ACTIONS
+// ================================================================
+function togglePwd() { const i=document.getElementById('pi'); i.type=i.type==='password'?'text':'password'; }
+
+let _completing = false;
+async function clientCompleteStage(stageId) {
+  if (_completing) return; // защита от двойного нажатия
+  const sess = Auth.session();
+  if (!sess) return;
+  _completing = true;
+  const btn = document.querySelector(`[onclick*="clientCompleteStage"]`);
+  if (btn) { btn.disabled=true; btn.innerHTML=`<span class="sp">↻</span> Сохранение...`; }
+  try {
+    await Data.completeStage(sess.clientId, stageId);
+    toast('Этап завершён! 🎉');
+    go('dashboard');
+  } catch(e) {
+    toast('Не удалось сохранить. Проверьте подключение к интернету.', 'err');
+    if (btn) { btn.disabled=false; btn.innerHTML=`${I.check} Отметить этап как выполненный`; }
+  } finally { _completing = false; }
+}
+
+async function adminUnlockStage(clientId, stageId) {
+  try { await Data.unlockStage(clientId, stageId); toast('Этап открыт!'); render(); }
+  catch(e) { toast('Ошибка. Проверьте подключение.', 'err'); }
+}
+async function adminLockStage(clientId, stageId) {
+  if (!confirm('Заблокировать этап?')) return;
+  try { await Data.lockStage(clientId, stageId); toast('Этап заблокирован'); render(); }
+  catch(e) { toast('Ошибка. Проверьте подключение.', 'err'); }
+}
+async function adminUnlockAll(clientId) {
+  try { await Data.unlockAll(clientId); toast('Все этапы открыты!'); render(); }
+  catch(e) { toast('Ошибка. Проверьте подключение.', 'err'); }
+}
+async function adminResetClient(clientId) {
+  if (!confirm('Сбросить прогресс? Останется открытым только первый этап.')) return;
+  try { await Data.resetClient(clientId); toast('Прогресс сброшен'); render(); }
+  catch(e) { toast('Ошибка. Проверьте подключение.', 'err'); }
+}
+async function adminChangeClientPwd(clientId) {
+  const p = prompt('Новый пароль для клиента (минимум 4 символа):');
+  if (!p) return;
+  if (p.length < 4) { toast('Пароль должен быть минимум 4 символа', 'err'); return; }
+  try { await Data.updateClientPassword(clientId, p); toast('Пароль изменён!'); }
+  catch(e) { toast('Ошибка. Проверьте подключение.', 'err'); }
+}
+async function adminDeleteClient(clientId) {
+  if (!confirm('Удалить клиента? Необратимо.')) return;
+  try { await Data.deleteClient(clientId); toast('Клиент удалён'); go('adminDashboard'); }
+  catch(e) { toast('Ошибка. Проверьте подключение.', 'err'); }
+}
+
+async function saveVideoUrl(stageId) {
+  const url = document.getElementById(`vurl_${stageId}`).value.trim();
+  try {
+    await Data.updateStageData(stageId, { videoUrl: url });
+    toast('Видео сохранено!'); render();
+  } catch(e) { toast('Ошибка сохранения.', 'err'); }
+}
+
+async function uploadVideoFile(event, stageId) {
+  const file = event.target.files[0]; if (!file) return;
+  if (file.size > 100*1024*1024) { toast('Файл >100 МБ. Используйте YouTube или Google Drive.','err'); return; }
+  toast('Загрузка...');
+  const reader = new FileReader();
+  reader.onload = async e => { await Data.updateStageData(stageId, { videoUrl: e.target.result }); toast('Видео загружено!'); render(); };
+  reader.onerror = () => toast('Ошибка загрузки','err');
+  reader.readAsDataURL(file);
+}
+
+function setArtType(type) {
+  artType = type;
+  ['link','file','text'].forEach(t => {
+    const btn=document.querySelector(`[data-type="${t}"]`), inp=document.getElementById(`artIn_${t}`);
+    if (!btn||!inp) return;
+    if (t===type) { btn.className='flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-xl border-2 border-brand-500 bg-brand-50 text-brand-700 font-bold transition'; inp.classList.remove('hidden'); }
+    else { btn.className='flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-xl border-2 border-slate-200 text-slate-500 font-semibold transition'; inp.classList.add('hidden'); }
+  });
+}
+
+function updateFileLbl() {
+  const f=document.getElementById('artFile').files[0];
+  if (f) document.getElementById('fileNameLabel').textContent=f.name;
+}
+
+async function addArtifact(stageId) {
+  const name=document.getElementById('artName').value.trim();
+  if (!name) { toast('Введите название','err'); return; }
+  const stage=Data.stage(stageId);
+  const arts=[...(stage.artifacts||[])];
+  if (artType==='link') {
+    const url=document.getElementById('artUrl').value.trim();
+    if (!url) { toast('Введите ссылку','err'); return; }
+    arts.push({ id:'a_'+Date.now(), type:'link', name, url });
+  } else if (artType==='file') {
+    const file=document.getElementById('artFile').files[0];
+    if (!file) { toast('Выберите файл','err'); return; }
+    if (file.size>8*1024*1024) { toast('Файл >8 МБ. Используйте ссылку.','err'); return; }
+    try {
+      const content=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(file); });
+      arts.push({ id:'a_'+Date.now(), type:'file', name, content });
+    } catch { toast('Ошибка загрузки','err'); return; }
+  } else {
+    const content=document.getElementById('artText').value.trim();
+    if (!content) { toast('Введите текст','err'); return; }
+    arts.push({ id:'a_'+Date.now(), type:'text', name, content });
+  }
+  await Data.updateStageData(stageId, { artifacts: arts });
+  toast('Материал добавлен!'); render();
+}
+
+async function removeArtifact(stageId, idx) {
+  const stage=Data.stage(stageId);
+  const arts=[...(stage.artifacts||[])]; arts.splice(idx,1);
+  await Data.updateStageData(stageId, { artifacts: arts });
+  toast('Удалено'); render();
+}
+
+// ================================================================
+// SETUP WIZARD
+// ================================================================
+function showDownloadStep(config) {
+  window._pendingConfig = config; // store for download button
+  document.getElementById('app').innerHTML = `
+    <div class="min-h-screen bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 flex items-center justify-center p-4">
+      <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md text-center fi">
+        <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <h2 class="text-2xl font-extrabold text-slate-900 mb-2">Firebase подключён!</h2>
+        <p class="text-slate-500 text-sm mb-6">Теперь скачай готовый файл и размести его на Netlify. Все клиенты будут сразу видеть страницу входа.</p>
+
+        <button onclick="downloadConfiguredFile(window._pendingConfig)"
+          class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-4 rounded-2xl mb-3 text-sm transition">
+          ⬇️ Скачать готовый файл сайта (index.html)
+        </button>
+
+        <div class="bg-slate-50 rounded-2xl p-4 text-left mb-4">
+          <p class="text-xs font-bold text-slate-700 mb-2">Дальше 3 шага:</p>
+          <div class="space-y-1.5 text-xs text-slate-600">
+            <p>1. Скачай файл <strong>index.html</strong></p>
+            <p>2. Зайди на <a href="https://netlify.com" target="_blank" class="text-brand-600 font-semibold underline">netlify.com</a> → перетащи файл → получи ссылку</p>
+            <p>3. Отправляй ссылку клиентам — они сразу видят страницу входа</p>
+          </div>
+        </div>
+
+        <button onclick="boot()" class="text-sm text-slate-400 hover:text-slate-600 transition">
+          Продолжить работу в текущем браузере →
+        </button>
+      </div>
+    </div>`;
+}
+
+function showManualFields() {
+  const el = document.getElementById('manualFields');
+  if (el) el.classList.remove('hidden');
+}
+
+function saveManualConfig() {
+  const errEl = document.getElementById('configErr');
+  errEl.classList.add('hidden');
+  const config = {
+    apiKey: document.getElementById('mf_apiKey').value.trim(),
+    authDomain: document.getElementById('mf_authDomain').value.trim(),
+    databaseURL: document.getElementById('mf_databaseURL').value.trim(),
+    projectId: document.getElementById('mf_projectId').value.trim(),
+    storageBucket: document.getElementById('mf_storageBucket').value.trim(),
+    messagingSenderId: document.getElementById('mf_messagingSenderId').value.trim(),
+    appId: document.getElementById('mf_appId').value.trim(),
+  };
+  if (!config.apiKey || !config.databaseURL) {
+    errEl.textContent = 'Поля apiKey и databaseURL обязательны.';
+    errEl.classList.remove('hidden'); return;
+  }
+  if (!initFirebase(config)) {
+    errEl.textContent = 'Ошибка подключения. Проверьте значения.';
+    errEl.classList.remove('hidden'); return;
+  }
+  localStorage.setItem(SK.CONFIG, JSON.stringify(config));
+  showDownloadStep(config);
+}
+
+function saveConfig() {
+  const raw = document.getElementById('fbConfigInput').value.trim();
+  const errEl = document.getElementById('configErr');
+  errEl.classList.add('hidden');
+
+  let config = null;
+
+  // Method 1: extract key:value pairs directly from text (most robust)
+  try {
+    const fields = ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId','measurementId'];
+    const extracted = {};
+    fields.forEach(key => {
+      const re = new RegExp(key + '["\']?\\s*:\\s*["\']([^"\'\\n]+)["\']');
+      const m = raw.match(re);
+      if (m) extracted[key] = m[1];
+    });
+    if (extracted.apiKey && extracted.databaseURL) { config = extracted; }
+  } catch(e) {}
+
+  // Method 2: eval the JS object literal
+  if (!config) {
+    try {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        // eslint-disable-next-line no-new-func
+        config = (new Function('return (' + match[0] + ')'))();
+      }
+    } catch(e) {}
+  }
+
+  // Method 3: try JSON.parse directly
+  if (!config) {
+    try {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) config = JSON.parse(match[0]);
+    } catch(e) {}
+  }
+
+  if (!config) {
+    errEl.textContent = 'Не удалось разобрать конфиг. Попробуйте скопировать только значения полей ниже ↓';
+    errEl.classList.remove('hidden');
+    showManualFields();
+    return;
+  }
+
+  if (!config.apiKey || !config.databaseURL) {
+    errEl.textContent = 'Не найдены apiKey или databaseURL. Убедитесь что создали Realtime Database и скопировали полный конфиг.';
+    errEl.classList.remove('hidden');
+    showManualFields();
+    return;
+  }
+
+  if (!initFirebase(config)) {
+    errEl.textContent = 'Ошибка подключения к Firebase. Проверьте конфиг.';
+    errEl.classList.remove('hidden'); return;
+  }
+
+  localStorage.setItem(SK.CONFIG, JSON.stringify(config));
+  showDownloadStep(config);
+}
+
+// ================================================================
+// BOOT
+// ================================================================
+async function boot() {
+  const app = document.getElementById('app');
+
+  // ⚠️ Detect file:// protocol — Firebase doesn't work locally
+  if (window.location.protocol === 'file:') {
+    app.innerHTML = `
+      <div class="min-h-screen bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md text-center">
+          <div class="text-5xl mb-4">🌐</div>
+          <h2 class="text-xl font-extrabold text-slate-900 mb-2">Сайт нужно открывать по интернет-ссылке</h2>
+          <p class="text-slate-500 text-sm mb-6 leading-relaxed">
+            Двойной клик по HTML-файлу не работает — Firebase требует настоящий веб-адрес (https://...).
+            Разместите файл на Netlify — это бесплатно и занимает 2 минуты.
+          </p>
+          <div class="bg-slate-50 rounded-2xl p-5 text-left mb-5">
+            <p class="font-bold text-slate-700 text-sm mb-3">Как разместить на Netlify:</p>
+            <div class="space-y-2 text-sm text-slate-600">
+              <p>1. Перейдите на <a href="https://app.netlify.com/drop" target="_blank" class="text-brand-600 font-bold underline">app.netlify.com/drop</a></p>
+              <p>2. Перетащите файл <strong>konsilium-learning-ГОТОВЫЙ.html</strong> в появившуюся зону</p>
+              <p>3. Через 10 секунд получите ссылку вида <em>abc123.netlify.app</em></p>
+              <p>4. Открывайте по этой ссылке — всё работает</p>
+            </div>
+          </div>
+          <a href="https://app.netlify.com/drop" target="_blank"
+            class="block w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 rounded-2xl text-sm transition mb-3">
+            Открыть Netlify Drop →
+          </a>
+          <p class="text-xs text-slate-400">Если файл ещё не скачан — сначала пройдите настройку Firebase выше</p>
+          ${getStoredConfig() ? `<button onclick="continueSetup()" class="mt-2 text-xs text-brand-500 hover:text-brand-700 underline">Открыть мастер настройки</button>` : ''}
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Show loading
+  app.innerHTML = `<div class="min-h-screen flex items-center justify-center flex-col gap-3">
+    <div class="w-10 h-10 rounded-full border-4 border-brand-200 border-t-brand-600 sp"></div>
+    <p class="text-slate-400 text-sm">Подключение к базе данных...</p>
+    <p class="text-slate-300 text-xs">Может занять до 45 секунд при медленном интернете</p>
+  </div>`;
+
+  // Check/init Firebase
+  const storedConfig = getStoredConfig();
+  if (!storedConfig || !storedConfig.apiKey || !storedConfig.databaseURL) {
+    app.innerHTML = vSetup(); return;
+  }
+
+  if (!initFirebase(storedConfig)) {
+    app.innerHTML = vSetup(); return;
+  }
+
+  // Load data
+  try {
+    await Data.load();
+  } catch(e) {
+    app.innerHTML = `<div class="min-h-screen flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl border border-red-200 p-6 max-w-sm text-center">
+        <div class="text-4xl mb-3">❌</div>
+        <p class="text-slate-800 font-bold mb-2">Не удалось загрузить данные</p>
+        <p class="text-sm text-slate-500 mb-4">${e.message || 'Проверьте интернет-подключение'}</p>
+        <div class="flex gap-2">
+          <button onclick="location.reload()" class="flex-1 bg-brand-600 text-white px-3 py-2 rounded-xl text-sm font-bold">Повторить</button>
+          <button onclick="localStorage.removeItem('${SK.CONFIG}');location.reload()" class="flex-1 bg-slate-100 text-slate-600 px-3 py-2 rounded-xl text-sm font-semibold">Перенастроить</button>
+        </div>
+      </div>
+    </div>`; return;
+  }
+
+  // Route to correct view
+  const sess = Auth.session();
+  if (!sess) { VIEW='login'; }
+  else if (sess.isAdmin) { VIEW='adminDashboard'; }
+  else {
+    const freshClient = Data.client(sess.clientId);
+    if (!freshClient) { Auth.logout(); VIEW='login'; }
+    else VIEW='dashboard';
+  }
+  render();
+}
+
+function continueSetup() {
+  document.getElementById('app').innerHTML = vSetup();
+}
+
+// ---- Stage meta editing ----
+let _editingStageId = null;
+
+function openEditStageMeta(stageId) {
+  const s = Data.stageMeta(stageId);
+  if (!s) return;
+  _editingStageId = stageId;
+  document.getElementById('editStageTitle').value = s.title || '';
+  document.getElementById('editStageLabel').value = s.label || '';
+  document.getElementById('editStageMetaModal').classList.remove('hidden');
+}
+
+async function saveEditStageMeta() {
+  const title = document.getElementById('editStageTitle').value.trim();
+  const label = document.getElementById('editStageLabel').value.trim();
+  if (!title || !label) { toast('Заполните все поля', 'err'); return; }
+  try {
+    await Data.updateStageMeta(_editingStageId, { title, label });
+    document.getElementById('editStageMetaModal').classList.add('hidden');
+    render();
+    toast('Этап обновлён ✓');
+  } catch(e) { toast('Ошибка: ' + e.message, 'err'); }
+}
+
+function openAddStage() {
+  document.getElementById('newStageTitle').value = '';
+  document.getElementById('newStageLabel').value = '';
+  document.getElementById('addStageErr').classList.add('hidden');
+  document.getElementById('addStageModal').classList.remove('hidden');
+}
+
+async function saveAddStage() {
+  const title = document.getElementById('newStageTitle').value.trim();
+  const label = document.getElementById('newStageLabel').value.trim();
+  const err = document.getElementById('addStageErr');
+  err.classList.add('hidden');
+  if (!title || !label) { err.textContent='Заполните все поля'; err.classList.remove('hidden'); return; }
+  try {
+    await Data.addStage(title, label);
+    document.getElementById('addStageModal').classList.add('hidden');
+    render();
+    toast('Этап добавлен ✓');
+  } catch(e) { err.textContent = e.message; err.classList.remove('hidden'); }
+}
+
+boot();
+</script>
+</body>
+</html>
