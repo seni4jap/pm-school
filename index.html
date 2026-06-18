@@ -76,7 +76,7 @@ const DEFAULT_STAGES = [
 // Этот объект заполняется автоматически при скачивании настроенного файла.
 // Не редактируйте вручную — используйте мастер настройки.
 // ================================================================
-const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"} // <-- сюда вставляется конфиг при генерации файла
+const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"} // <-- сюда вставляется конфиг при генерации файла // <-- сюда вставляется конфиг при генерации файла
 
 let fbConfig = null;
 
@@ -146,7 +146,7 @@ async function fbRemove(path) {
 // ================================================================
 // IN-MEMORY STATE
 // ================================================================
-const S = { clients: {}, stages: {}, stagesMeta: null, feedback: {}, loaded: false };
+const S = { clients: {}, stages: {}, stagesMeta: null, feedback: {}, presence: {}, loaded: false };
 
 // ================================================================
 // CRYPTO
@@ -179,12 +179,14 @@ function toArr(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeo
 const Data = {
 
   async load() {
-    const [clients, stages, stagesMetaRaw, adminHash] = await Promise.all([
+    const [clients, stages, stagesMetaRaw, adminHash, presence] = await Promise.all([
       fbGet('clients'),
       fbGet('stages'),
       fbGet('stagesMeta'),
-      fbGet('admin/passwordHash')
+      fbGet('admin/passwordHash'),
+      fbGet('presence')
     ]);
+    S.presence = presence || {};
     S.clients = clients || {};
     S.stages  = stages  || {};
 
@@ -406,6 +408,23 @@ const Data = {
   },
 
   async getAdminHash() { return fbGet('admin/passwordHash'); },
+
+  // Presence
+  async updatePresence(clientId, page) {
+    await fbSet(`presence/${clientId}`, { t: Date.now(), page });
+  },
+  async clearPresence(clientId) {
+    await fbRemove(`presence/${clientId}`);
+  },
+  async refreshPresence() {
+    const data = await fbGet('presence') || {};
+    S.presence = data;
+  },
+  isOnline(clientId) {
+    const p = S.presence[clientId];
+    if (!p || !p.t) return false;
+    return (Date.now() - p.t) < 2 * 60 * 1000; // онлайн если активен < 2 минут назад
+  },
   async setAdminPassword(pwd) { await fbSet('admin/passwordHash', await hashPwd(pwd)); }
 };
 
@@ -580,13 +599,15 @@ function startRealtimeSync() {
     if (document.hidden) return;
     if (!['adminDashboard','adminClient'].includes(VIEW)) return;
     try {
-      const prev = JSON.stringify(S.clients);
-      await Data.refreshClients();
-      if (JSON.stringify(S.clients) === prev) return; // данные не изменились — не перерисовывать
+      const prevClients = JSON.stringify(S.clients);
+      const prevPresence = JSON.stringify(S.presence);
+      await Promise.all([Data.refreshClients(), Data.refreshPresence()]);
+      const clientsChanged = JSON.stringify(S.clients) !== prevClients;
+      const presenceChanged = JSON.stringify(S.presence) !== prevPresence;
+      if (!clientsChanged && !presenceChanged) return;
       const app = document.getElementById('app');
       if (!app) return;
       if (VIEW === 'adminDashboard') {
-        // Не перерисовывать если открыто модальное окно — пользователь заполняет форму
         const modal = document.getElementById('addModal');
         if (modal && !modal.classList.contains('hidden')) return;
         app.innerHTML = vAdminDash(); initAdminForms();
@@ -599,20 +620,31 @@ function stopRealtimeSync() {
   if (realtimeSub) { clearInterval(realtimeSub); realtimeSub = null; }
 }
 
-// Лёгкий polling для клиентов — проверяет раз в 30 сек обновился ли их доступ
+// Лёгкий polling для клиентов — проверяет раз в 30 сек обновился ли их доступ + heartbeat присутствия
 function startClientSync() {
   if (clientSyncSub) return;
+  const sess = Auth.session();
+  if (!sess || sess.isAdmin) return;
+  // Сразу пишем присутствие при входе
+  Data.updatePresence(sess.clientId, VIEW).catch(()=>{});
+  // При закрытии вкладки — чистим (best effort)
+  window.addEventListener('beforeunload', () => {
+    Data.clearPresence(sess.clientId).catch(()=>{});
+  }, { once: true });
   clientSyncSub = setInterval(async () => {
+    const s = Auth.session();
+    if (!s || s.isAdmin) return;
+    // Heartbeat — пишем только если вкладка активна
+    if (!document.hidden && ['dashboard','stage'].includes(VIEW)) {
+      Data.updatePresence(s.clientId, VIEW).catch(()=>{});
+    }
     if (document.hidden) return;
     if (!['dashboard','stage'].includes(VIEW)) return;
-    const sess = Auth.session();
-    if (!sess || sess.isAdmin) return;
     try {
-      const prev = JSON.stringify(S.clients[sess.clientId]);
+      const prev = JSON.stringify(S.clients[s.clientId]);
       await Data.refreshClients();
-      const next = JSON.stringify(S.clients[sess.clientId]);
+      const next = JSON.stringify(S.clients[s.clientId]);
       if (next === prev) return;
-      // Данные клиента изменились — обновить дашборд (но не перерисовывать stage с видео)
       if (VIEW === 'dashboard') { document.getElementById('app').innerHTML = vClientDash(); }
     } catch(e) {}
   }, 30000);
@@ -1121,12 +1153,19 @@ function vAdminDash() {
     ? `<div class="text-center py-10 text-slate-400"><div class="text-4xl mb-3">👥</div><p class="text-sm">Нет клиентов. Добавьте первого!</p></div>`
     : clients.map(c => {
         const done=(c.completedStages||[]).length, pct=Math.round(done/stages.length*100);
+        const online = Data.isOnline(c.id);
+        const presence = S.presence[c.id];
+        const pageLabel = presence?.page === 'stage' ? 'смотрит урок' : 'на главной';
+        const onlineBadge = online
+          ? `<span class="flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block"></span>В сети · ${pageLabel}</span>`
+          : `<span class="flex items-center gap-1 text-xs text-slate-300"><span class="w-2 h-2 rounded-full bg-slate-200 inline-block"></span>Не в сети</span>`;
         return `
-        <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm">
+        <div class="bg-white border ${online ? 'border-emerald-200' : 'border-slate-200'} hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm">
           <div class="flex items-center justify-between mb-2">
             <div class="min-w-0 flex-1 cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
               <p class="font-semibold text-sm text-slate-800">${esc(c.name)}</p>
-              <p class="text-xs text-slate-400">${esc(c.company)||'—'} · @${esc(c.login)}</p>
+              <p class="text-xs text-slate-400 mb-1">${esc(c.company)||'—'} · @${esc(c.login)}</p>
+              ${onlineBadge}
             </div>
             <div class="flex items-center gap-2 flex-shrink-0 ml-3">
               <button onclick="event.stopPropagation();impersonateClient('${c.id}')" title="Посмотреть глазами клиента"
@@ -1140,7 +1179,7 @@ function vAdminDash() {
             </div>
           </div>
           <div class="bg-slate-100 rounded-full h-1.5 overflow-hidden cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
-            <div class="bg-brand-500 h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
+            <div class="${online ? 'bg-emerald-400' : 'bg-brand-500'} h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
           </div>
         </div>`;
       }).join('');
@@ -1194,9 +1233,13 @@ function vAdminDash() {
     </div>
     <div class="max-w-3xl mx-auto px-4 py-5 fi">
       <div class="grid grid-cols-3 gap-3 mb-6">
-        ${[['Клиентов',clients.length,'👥'],['Этапов',stages.length,'📚'],['Видео',stages.filter(s=>s.videoUrl).length,'🎬']].map(([label,val,emoji])=>`
-          <div class="bg-white rounded-2xl border border-slate-100 p-4 text-center">
-            <p class="text-3xl font-extrabold text-brand-600">${val}</p>
+        ${[
+          ['Клиентов', clients.length, '👥', false],
+          ['В сети', clients.filter(c=>Data.isOnline(c.id)).length, '🟢', true],
+          ['Этапов', stages.length, '📚', false]
+        ].map(([label,val,emoji,isOnline])=>`
+          <div class="bg-white rounded-2xl border ${isOnline && val > 0 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100'} p-4 text-center">
+            <p class="text-3xl font-extrabold ${isOnline && val > 0 ? 'text-emerald-500' : 'text-brand-600'}">${val}</p>
             <p class="text-xs text-slate-500 mt-1">${emoji} ${label}</p>
           </div>`).join('')}
       </div>
