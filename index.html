@@ -679,6 +679,8 @@ function renderVideo(url) {
 // ================================================================
 let VIEW = 'loading', PARAMS = {};
 let ADMIN_TRACK = 'rp'; // 'rp' | 'team'
+let ADMIN_CLIENTS_COLLAPSED = false;
+let ADMIN_STAGES_COLLAPSED = false;
 let realtimeSub = null;
 let clientSyncSub = null;
 
@@ -1089,7 +1091,10 @@ function vStage() {
 // VIEW — ADMIN CHATS (list of clients)
 // ================================================================
 function vAdminChats() {
-  const clients = Data.clients();
+  const allClients = Data.clients();
+  const clients = allClients.filter(c => (c.track || 'rp') === ADMIN_TRACK);
+  const rpCount = allClients.filter(c => (c.track || 'rp') === 'rp').length;
+  const teamCount = allClients.filter(c => c.track === 'team').length;
   return `
   <div class="min-h-screen bg-slate-50">
     <div class="bg-gradient-to-r from-brand-800 to-brand-700 text-white sticky top-0 z-10">
@@ -1101,10 +1106,21 @@ function vAdminChats() {
         </div>
         <button onclick="Auth.logout();go('login')" class="text-brand-300 hover:text-white flex items-center gap-1 text-xs transition">${I.logout} Выйти</button>
       </div>
+      <!-- Track tabs -->
+      <div class="max-w-3xl mx-auto px-4 pb-3 flex gap-2">
+        <button onclick="switchAdminTrack('rp');render()"
+          class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition ${ADMIN_TRACK === 'rp' ? 'bg-white text-brand-700' : 'bg-brand-700/60 text-brand-200 hover:bg-brand-600'}">
+          👤 РП <span class="px-1.5 py-0.5 rounded-full text-[10px] ${ADMIN_TRACK === 'rp' ? 'bg-brand-100 text-brand-700' : 'bg-brand-600 text-brand-200'}">${rpCount}</span>
+        </button>
+        <button onclick="switchAdminTrack('team');render()"
+          class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition ${ADMIN_TRACK === 'team' ? 'bg-white text-brand-700' : 'bg-brand-700/60 text-brand-200 hover:bg-brand-600'}">
+          👥 Команда <span class="px-1.5 py-0.5 rounded-full text-[10px] ${ADMIN_TRACK === 'team' ? 'bg-brand-100 text-brand-700' : 'bg-brand-600 text-brand-200'}">${teamCount}</span>
+        </button>
+      </div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-5 fi">
       ${clients.length === 0
-        ? `<div class="text-center py-16 text-slate-400"><div class="text-5xl mb-4">💬</div><p class="text-sm">Клиентов пока нет</p></div>`
+        ? `<div class="text-center py-16 text-slate-400"><div class="text-5xl mb-4">💬</div><p class="text-sm">Участников в этом треке пока нет</p></div>`
         : `<div class="space-y-2">${clients.map(c => `
           <div class="bg-white border border-slate-200 hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm cursor-pointer flex items-center gap-3" onclick="go('adminClientChat',{clientId:'${c.id}'})">
             <div class="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-sm flex-shrink-0">${esc((c.name||'?')[0].toUpperCase())}</div>
@@ -1151,7 +1167,9 @@ function vAdminClientChat() {
 async function loadAdminClientChat(clientId) {
   const el = document.getElementById('clientChatContent');
   if (!el) return;
-  const stages = Data.stagesMeta();
+  const client = Data.client(clientId);
+  const clientTrack = client?.track || 'rp';
+  const stages = Data.stagesMetaFor(clientTrack);
   if (!stages.length) { el.innerHTML='<p class="text-slate-400 text-sm text-center py-8">Этапов нет</p>'; return; }
   const results = await Promise.all(stages.map(async s => {
     const fb = await Data.loadClientFeedback(s.id, clientId);
@@ -1262,38 +1280,62 @@ function vAdminDash() {
   const teamCount = allClients.filter(c => c.track === 'team').length;
   const onlineCount = clients.filter(c => Data.isOnline(c.id)).length;
 
+  // Render a single client card
+  function clientCard(c) {
+    const done=(c.completedStages||[]).length, pct=stages.length ? Math.round(done/stages.length*100) : 0;
+    const online = Data.isOnline(c.id);
+    const presence = S.presence[c.id];
+    const pageLabel = presence?.page === 'stage' ? 'смотрит урок' : 'на главной';
+    const onlineBadge = online
+      ? `<span class="flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block"></span>В сети · ${pageLabel}</span>`
+      : `<span class="flex items-center gap-1 text-xs text-slate-300"><span class="w-2 h-2 rounded-full bg-slate-200 inline-block"></span>Не в сети</span>`;
+    return `
+    <div class="bg-white border ${online ? 'border-emerald-200' : 'border-slate-200'} hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm">
+      <div class="flex items-center justify-between mb-2">
+        <div class="min-w-0 flex-1 cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
+          <p class="font-semibold text-sm text-slate-800">${esc(c.name)}</p>
+          <p class="text-xs text-slate-400 mb-1">@${esc(c.login)}</p>
+          ${onlineBadge}
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+          <button onclick="event.stopPropagation();impersonateClient('${c.id}')" title="Посмотреть глазами клиента"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-brand-600 hover:bg-brand-50 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          </button>
+          <div class="text-right cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
+            <p class="text-xl font-extrabold text-brand-600">${pct}%</p>
+            <p class="text-xs text-slate-400">${done}/${stages.length} ${ADMIN_TRACK==='rp'?'эт.':'ур.'}</p>
+          </div>
+        </div>
+      </div>
+      <div class="bg-slate-100 rounded-full h-1.5 overflow-hidden cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
+        <div class="${online ? 'bg-emerald-400' : 'bg-brand-500'} h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+  }
+
+  // Group clients by company
+  const grouped = {};
+  clients.forEach(c => {
+    const key = (c.company || '').trim() || '—';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(c);
+  });
+  const companyNames = Object.keys(grouped).sort((a,b) => a==='—'?1:b==='—'?-1:a.localeCompare(b,'ru'));
+
   const clientCards = clients.length === 0
     ? `<div class="text-center py-10 text-slate-400"><div class="text-4xl mb-3">👥</div><p class="text-sm">Нет участников. Добавьте первого!</p></div>`
-    : clients.map(c => {
-        const done=(c.completedStages||[]).length, pct=Math.round(done/stages.length*100);
-        const online = Data.isOnline(c.id);
-        const presence = S.presence[c.id];
-        const pageLabel = presence?.page === 'stage' ? 'смотрит урок' : 'на главной';
-        const onlineBadge = online
-          ? `<span class="flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block"></span>В сети · ${pageLabel}</span>`
-          : `<span class="flex items-center gap-1 text-xs text-slate-300"><span class="w-2 h-2 rounded-full bg-slate-200 inline-block"></span>Не в сети</span>`;
+    : companyNames.map(company => {
+        const list = grouped[company];
+        const onlineInGroup = list.filter(c => Data.isOnline(c.id)).length;
         return `
-        <div class="bg-white border ${online ? 'border-emerald-200' : 'border-slate-200'} hover:border-brand-300 rounded-xl p-4 transition hover:shadow-sm">
-          <div class="flex items-center justify-between mb-2">
-            <div class="min-w-0 flex-1 cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
-              <p class="font-semibold text-sm text-slate-800">${esc(c.name)}</p>
-              <p class="text-xs text-slate-400 mb-1">${esc(c.company)||'—'} · @${esc(c.login)}</p>
-              ${onlineBadge}
-            </div>
-            <div class="flex items-center gap-2 flex-shrink-0 ml-3">
-              <button onclick="event.stopPropagation();impersonateClient('${c.id}')" title="Посмотреть глазами клиента"
-                class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-brand-600 hover:bg-brand-50 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-              </button>
-              <div class="text-right cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
-                <p class="text-xl font-extrabold text-brand-600">${pct}%</p>
-                <p class="text-xs text-slate-400">${done}/${stages.length} уроков</p>
-              </div>
-            </div>
+        <div class="mb-4">
+          <div class="flex items-center gap-2 mb-2 px-1">
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">${esc(company)}</span>
+            <span class="text-xs text-slate-400">${list.length} чел.</span>
+            ${onlineInGroup > 0 ? `<span class="text-xs text-emerald-600 font-semibold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>${onlineInGroup} онлайн</span>` : ''}
           </div>
-          <div class="bg-slate-100 rounded-full h-1.5 overflow-hidden cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
-            <div class="${online ? 'bg-emerald-400' : 'bg-brand-500'} h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
-          </div>
+          <div class="space-y-2">${list.map(c => clientCard(c)).join('')}</div>
         </div>`;
       }).join('');
 
@@ -1373,20 +1415,39 @@ function vAdminDash() {
           </div>`).join('')}
       </div>
 
-      <div class="flex items-center justify-between mb-3">
-        <p class="font-bold text-slate-800">${ADMIN_TRACK === 'rp' ? 'Руководители проектов' : 'Команда'}</p>
-        <button onclick="document.getElementById('addModal').classList.remove('hidden')"
-          class="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition">
-          ${I.plus} Добавить участника
-        </button>
+      <!-- Clients section -->
+      <div class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <button onclick="ADMIN_CLIENTS_COLLAPSED=!ADMIN_CLIENTS_COLLAPSED;render()"
+            class="flex items-center gap-2 font-bold text-slate-800 hover:text-brand-600 transition">
+            <svg class="w-4 h-4 transition-transform ${ADMIN_CLIENTS_COLLAPSED ? '' : 'rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            ${ADMIN_TRACK === 'rp' ? 'Руководители проектов' : 'Команда'}
+            <span class="text-xs font-normal text-slate-400">${clients.length} чел.</span>
+          </button>
+          <button onclick="document.getElementById('addModal').classList.remove('hidden')"
+            class="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition">
+            ${I.plus} Добавить
+          </button>
+        </div>
+        ${ADMIN_CLIENTS_COLLAPSED ? '' : clientCards}
       </div>
-      <div class="space-y-2 mb-6">${clientCards}</div>
 
-      <p class="font-bold text-slate-800 mb-3">${ADMIN_TRACK === 'rp' ? 'Этапы обучения РП' : 'Уроки для команды'}</p>
-      <div class="space-y-2">${stageCards}</div>
-      <button onclick="openAddStage()" class="w-full mt-3 py-3 border-2 border-dashed border-slate-200 hover:border-brand-400 rounded-xl text-sm text-slate-400 hover:text-brand-600 transition flex items-center justify-center gap-2">
-        ${I.plus} ${ADMIN_TRACK === 'rp' ? 'Добавить этап' : 'Добавить урок'}
-      </button>
+      <!-- Stages section -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <button onclick="ADMIN_STAGES_COLLAPSED=!ADMIN_STAGES_COLLAPSED;render()"
+            class="flex items-center gap-2 font-bold text-slate-800 hover:text-brand-600 transition">
+            <svg class="w-4 h-4 transition-transform ${ADMIN_STAGES_COLLAPSED ? '' : 'rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            ${ADMIN_TRACK === 'rp' ? 'Этапы обучения РП' : 'Уроки для команды'}
+            <span class="text-xs font-normal text-slate-400">${stages.length} ${ADMIN_TRACK==='rp'?'этапов':'уроков'}</span>
+          </button>
+          <button onclick="openAddStage()"
+            class="flex items-center gap-1.5 border border-slate-200 hover:border-brand-400 text-slate-500 hover:text-brand-600 text-xs px-3 py-2 rounded-xl font-semibold transition">
+            ${I.plus} ${ADMIN_TRACK === 'rp' ? 'Этап' : 'Урок'}
+          </button>
+        </div>
+        ${ADMIN_STAGES_COLLAPSED ? '' : `<div class="space-y-2">${stageCards}</div>`}
+      </div>
     </div>
   </div>
 
