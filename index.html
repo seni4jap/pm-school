@@ -71,12 +71,33 @@ const DEFAULT_STAGES = [
     duration:'', videoUrl:'', artifacts:[] }
 ];
 
+const DEFAULT_STAGES_TEAM = [
+  { id:'lesson1', order:0, label:'Урок 1', title:'Зачем участнику знать методологию',
+    topics:['Что даёт понимание методологии участнику','Чем участник отличается от РП','Как быть эффективным без управленческих знаний'],
+    duration:'8-10 минут', videoUrl:'', artifacts:[] },
+  { id:'lesson2', order:1, label:'Урок 2', title:'Задача, процесс, проект — взгляд участника',
+    topics:['Чем отличаются задача, процесс и проект','Как понять что перед тобой проект','Почему это меняет правила игры'],
+    duration:'10-12 минут', videoUrl:'', artifacts:[] },
+  { id:'lesson3', order:2, label:'Урок 3', title:'Как устроен проект изнутри: паспорт и роли',
+    topics:['Что такое паспорт проекта и зачем он вам','Роли в проекте: кто есть кто','Инструменты и матрица коммуникаций'],
+    duration:'12-15 минут', videoUrl:'', artifacts:[] },
+  { id:'lesson4', order:3, label:'Урок 4', title:'Жизненный цикл проекта: от старта до завершения',
+    topics:['Запуск: установочная встреча','Реализация и статус-встречи','Контрольные точки и завершение'],
+    duration:'10-12 минут', videoUrl:'', artifacts:[] },
+  { id:'lesson5', order:4, label:'Урок 5', title:'Как быть эффективным исполнителем',
+    topics:['Как правильно принять задачу','Почему дедлайн в проекте — это серьёзно','Как сообщать о проблемах'],
+    duration:'10-12 минут', videoUrl:'', artifacts:[] },
+  { id:'lesson6', order:5, label:'Урок 6', title:'Участник и РП: одна система',
+    topics:['Как ваша работа влияет на весь проект','Признаки зрелого участника команды','Что значит работать в системе'],
+    duration:'8-10 минут', videoUrl:'', artifacts:[] },
+];
+
 // ================================================================
 // FIREBASE CONFIG
 // Этот объект заполняется автоматически при скачивании настроенного файла.
 // Не редактируйте вручную — используйте мастер настройки.
 // ================================================================
-const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"} // <-- сюда вставляется конфиг при генерации файла // <-- сюда вставляется конфиг при генерации файла
+const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"}; // <-- сюда вставляется конфиг при генерации файла
 
 let fbConfig = null;
 
@@ -88,7 +109,7 @@ function getStoredConfig() {
 function downloadConfiguredFile(config) {
   const html = document.documentElement.outerHTML;
   const configured = '<!DOCTYPE html>\n' + html.replace(
-    'const EMBEDDED_CONFIG = null;',
+    'const EMBEDDED_CONFIG = {"apiKey":"AIzaSyAZHk-rGAJrF5jYd2nQwS1wvHn3sbE3dpU","authDomain":"ddddd1-259da.firebaseapp.com","databaseURL":"https://ddddd1-259da-default-rtdb.europe-west1.firebasedatabase.app","projectId":"ddddd1-259da","storageBucket":"ddddd1-259da.firebasestorage.app","messagingSenderId":"970082580466","appId":"1:970082580466:web:ddc7da8d8426b8a065dd6b"};',
     'const EMBEDDED_CONFIG = ' + JSON.stringify(config, null, 2) + ';'
   );
   const blob = new Blob([configured], { type: 'text/html;charset=utf-8' });
@@ -146,7 +167,7 @@ async function fbRemove(path) {
 // ================================================================
 // IN-MEMORY STATE
 // ================================================================
-const S = { clients: {}, stages: {}, stagesMeta: null, feedback: {}, presence: {}, loaded: false };
+const S = { clients: {}, stages: {}, stagesMeta: null, stagesTeam: {}, stagesMetaTeam: null, feedback: {}, presence: {}, loaded: false };
 
 // ================================================================
 // CRYPTO
@@ -179,18 +200,21 @@ function toArr(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeo
 const Data = {
 
   async load() {
-    const [clients, stages, stagesMetaRaw, adminHash, presence] = await Promise.all([
+    const [clients, stages, stagesMetaRaw, adminHash, presence, stagesTeamRaw, stagesMetaTeamRaw] = await Promise.all([
       fbGet('clients'),
       fbGet('stages'),
       fbGet('stagesMeta'),
       fbGet('admin/passwordHash'),
-      fbGet('presence')
+      fbGet('presence'),
+      fbGet('stages_team'),
+      fbGet('stagesMeta_team')
     ]);
     S.presence = presence || {};
     S.clients = clients || {};
     S.stages  = stages  || {};
+    S.stagesTeam = stagesTeamRaw || {};
 
-    // Seed stagesMeta from DEFAULT_STAGES if missing in Firebase
+    // Seed stagesMeta (РП) from DEFAULT_STAGES if missing
     if (stagesMetaRaw) {
       S.stagesMeta = stagesMetaRaw;
     } else {
@@ -202,13 +226,34 @@ const Data = {
       S.stagesMeta = seed;
     }
 
-    // Seed any missing stage records (handles partial seeding too)
+    // Seed stagesMeta_team (Команда) from DEFAULT_STAGES_TEAM if missing
+    if (stagesMetaTeamRaw) {
+      S.stagesMetaTeam = stagesMetaTeamRaw;
+    } else {
+      const seed = {};
+      DEFAULT_STAGES_TEAM.forEach(st => {
+        seed[st.id] = { id:st.id, order:st.order, label:st.label, title:st.title, topics:st.topics||[], duration:st.duration||'' };
+      });
+      await fbSet('stagesMeta_team', seed);
+      S.stagesMetaTeam = seed;
+    }
+
+    // Seed missing stage records for РП
     const stagesObj = { ...S.stages };
     let stagesChanged = false;
     Object.values(S.stagesMeta).forEach(st => {
       if (!stagesObj[st.id]) { stagesObj[st.id] = { videoUrl:'', artifacts:[] }; stagesChanged=true; }
     });
     if (stagesChanged) { await fbSet('stages', stagesObj); S.stages = stagesObj; }
+
+    // Seed missing stage records for Команда
+    const stagesTeamObj = { ...S.stagesTeam };
+    let stagesTeamChanged = false;
+    Object.values(S.stagesMetaTeam).forEach(st => {
+      if (!stagesTeamObj[st.id]) { stagesTeamObj[st.id] = { videoUrl:'', artifacts:[] }; stagesTeamChanged=true; }
+    });
+    if (stagesTeamChanged) { await fbSet('stages_team', stagesTeamObj); S.stagesTeam = stagesTeamObj; }
+
     // Seed admin password on first run
     if (!adminHash) await fbSet('admin/passwordHash', await hashPwd('admin123'));
 
@@ -226,7 +271,34 @@ const Data = {
     S.clients = data;
   },
 
-  // ---- Helpers ----
+  // ---- Track helpers ----
+  // track = 'rp' | 'team'
+  stagesMetaFor(track) {
+    if (track === 'team') {
+      const src = S.stagesMetaTeam ? Object.values(S.stagesMetaTeam) : DEFAULT_STAGES_TEAM;
+      return [...src].sort((a,b)=>a.order-b.order);
+    }
+    const src = S.stagesMeta ? Object.values(S.stagesMeta) : DEFAULT_STAGES;
+    return [...src].sort((a,b)=>a.order-b.order);
+  },
+  stageMetaFor(id, track) {
+    if (track === 'team') return S.stagesMetaTeam ? (S.stagesMetaTeam[id]||null) : DEFAULT_STAGES_TEAM.find(s=>s.id===id);
+    return S.stagesMeta ? (S.stagesMeta[id]||null) : DEFAULT_STAGES.find(s=>s.id===id);
+  },
+  stageDataFor(id, track) {
+    if (track === 'team') return S.stagesTeam[id] || { videoUrl:'', artifacts:[] };
+    return S.stages[id] || { videoUrl:'', artifacts:[] };
+  },
+  stageFor(id, track) {
+    const m = this.stageMetaFor(id, track);
+    return m ? { ...m, ...this.stageDataFor(m.id, track) } : null;
+  },
+  stagesFor(track) {
+    return this.stagesMetaFor(track).map(m=>({...m,...this.stageDataFor(m.id, track)}));
+  },
+  trackOf(clientId) { return (clientId && S.clients[clientId]?.track) || 'rp'; },
+
+  // ---- Legacy helpers (RP-only, kept for backward compat) ----
   stagesMeta() {
     const src = S.stagesMeta ? Object.values(S.stagesMeta) : DEFAULT_STAGES;
     return [...src].sort((a,b)=>a.order-b.order);
@@ -242,42 +314,64 @@ const Data = {
   client(id) { return S.clients[id] || null; },
   clientByLogin(login) { return Object.values(S.clients).find(c=>c.login?.toLowerCase()===login?.toLowerCase())||null; },
 
-  async updateStageData(id, updates) {
-    const merged = { ...( S.stages[id]||{} ), ...updates };
-    S.stages[id] = merged;
-    await fbSet(`stages/${id}`, merged);
+  async updateStageData(id, updates, track='rp') {
+    const dataPath = track === 'team' ? 'stages_team' : 'stages';
+    const store = track === 'team' ? S.stagesTeam : S.stages;
+    const merged = { ...(store[id]||{}), ...updates };
+    store[id] = merged;
+    await fbSet(`${dataPath}/${id}`, merged);
   },
 
-  async updateStageMeta(id, updates) {
-    if (!S.stagesMeta) S.stagesMeta = {};
-    S.stagesMeta[id] = { ...(S.stagesMeta[id]||{}), ...updates };
-    await fbSet(`stagesMeta/${id}`, S.stagesMeta[id]);
+  async updateStageMeta(id, updates, track='rp') {
+    const metaPath = track === 'team' ? 'stagesMeta_team' : 'stagesMeta';
+    const store = track === 'team' ? S.stagesMetaTeam : S.stagesMeta;
+    if (!store) { if (track==='team') S.stagesMetaTeam={}; else S.stagesMeta={}; }
+    const src = track === 'team' ? S.stagesMetaTeam : S.stagesMeta;
+    src[id] = { ...(src[id]||{}), ...updates };
+    await fbSet(`${metaPath}/${id}`, src[id]);
   },
 
-  async addStage(title, label) {
-    const existingOrders = this.stagesMeta().map(s=>s.order);
+  async addStage(title, label, track='rp') {
+    const existingOrders = this.stagesMetaFor(track).map(s=>s.order);
     const order = existingOrders.length ? Math.max(...existingOrders) + 1 : 1;
     const id = 'custom_' + Date.now();
     const meta = { id, order, label, title, topics:[], duration:'' };
-    if (!S.stagesMeta) S.stagesMeta = {};
-    S.stagesMeta[id] = meta;
-    S.stages[id] = { videoUrl:'', artifacts:[] };
-    await fbSet(`stagesMeta/${id}`, meta);
-    await fbSet(`stages/${id}`, { videoUrl:'', artifacts:[] });
+    const metaPath = track === 'team' ? 'stagesMeta_team' : 'stagesMeta';
+    const dataPath = track === 'team' ? 'stages_team' : 'stages';
+    if (track === 'team') {
+      if (!S.stagesMetaTeam) S.stagesMetaTeam = {};
+      S.stagesMetaTeam[id] = meta;
+      S.stagesTeam[id] = { videoUrl:'', artifacts:[] };
+    } else {
+      if (!S.stagesMeta) S.stagesMeta = {};
+      S.stagesMeta[id] = meta;
+      S.stages[id] = { videoUrl:'', artifacts:[] };
+    }
+    await fbSet(`${metaPath}/${id}`, meta);
+    await fbSet(`${dataPath}/${id}`, { videoUrl:'', artifacts:[] });
     return id;
   },
 
-  async deleteStage(id) {
-    if (S.stagesMeta) delete S.stagesMeta[id];
-    if (S.stages) delete S.stages[id];
-    await fbRemove(`stagesMeta/${id}`);
-    await fbRemove(`stages/${id}`);
+  async deleteStage(id, track='rp') {
+    const metaPath = track === 'team' ? 'stagesMeta_team' : 'stagesMeta';
+    const dataPath = track === 'team' ? 'stages_team' : 'stages';
+    if (track === 'team') {
+      if (S.stagesMetaTeam) delete S.stagesMetaTeam[id];
+      if (S.stagesTeam) delete S.stagesTeam[id];
+    } else {
+      if (S.stagesMeta) delete S.stagesMeta[id];
+      if (S.stages) delete S.stages[id];
+    }
+    await fbRemove(`${metaPath}/${id}`);
+    await fbRemove(`${dataPath}/${id}`);
   },
 
-  async reorderStages(orderedIds) {
-    if (!S.stagesMeta) return;
-    orderedIds.forEach((id, idx) => { if (S.stagesMeta[id]) S.stagesMeta[id].order = idx; });
-    await Promise.all(orderedIds.map((id, idx) => fbSet(`stagesMeta/${id}/order`, idx)));
+  async reorderStages(orderedIds, track='rp') {
+    const metaPath = track === 'team' ? 'stagesMeta_team' : 'stagesMeta';
+    const src = track === 'team' ? S.stagesMetaTeam : S.stagesMeta;
+    if (!src) return;
+    orderedIds.forEach((id, idx) => { if (src[id]) src[id].order = idx; });
+    await Promise.all(orderedIds.map((id, idx) => fbSet(`${metaPath}/${id}/order`, idx)));
   },
 
   async submitFeedback(stageId, clientId, clientName, rating, comment) {
@@ -311,12 +405,13 @@ const Data = {
     return data;
   },
 
-  async addClient(name, company, login, password) {
+  async addClient(name, company, login, password, track='rp') {
     if (this.clientByLogin(login)) throw new Error('Логин уже занят');
+    const firstStageId = this.stagesMetaFor(track)[0]?.id || (track === 'team' ? 'lesson1' : 'intro');
     const client = {
-      id: 'c_' + Date.now(), name, company, login,
+      id: 'c_' + Date.now(), name, company, login, track,
       passwordHash: await hashPwd(password),
-      unlockedStages: ['intro'], completedStages: [],
+      unlockedStages: [firstStageId], completedStages: [],
       createdAt: new Date().toISOString()
     };
     S.clients[client.id] = client;
@@ -382,8 +477,9 @@ const Data = {
     c.completedStages = toArr(c.completedStages);
     c.unlockedStages  = toArr(c.unlockedStages);
     if (!c.completedStages.includes(stageId)) c.completedStages = [...c.completedStages, stageId];
-    // Авто-разблокировка следующего этапа
-    const stages = this.stagesMeta();
+    // Авто-разблокировка следующего этапа (с учётом трека)
+    const track = this.trackOf(clientId);
+    const stages = this.stagesMetaFor(track);
     const cur = stages.findIndex(s=>s.id===stageId);
     if (cur !== -1 && cur < stages.length - 1) {
       const nextId = stages[cur+1].id;
@@ -395,14 +491,17 @@ const Data = {
 
   async resetClient(clientId) {
     if (!S.clients[clientId]) return;
+    const track = this.trackOf(clientId);
+    const firstId = this.stagesMetaFor(track)[0]?.id || (track === 'team' ? 'lesson1' : 'intro');
     S.clients[clientId].completedStages = [];
-    S.clients[clientId].unlockedStages  = ['intro'];
-    await fbSet(`clients/${clientId}/completedStages`, null); // null удаляет пустой массив корректно
-    await fbSet(`clients/${clientId}/unlockedStages`,  ['intro']);
+    S.clients[clientId].unlockedStages  = [firstId];
+    await fbSet(`clients/${clientId}/completedStages`, null);
+    await fbSet(`clients/${clientId}/unlockedStages`,  [firstId]);
   },
 
   async unlockAll(clientId) {
-    const all = DEFAULT_STAGES.map(s=>s.id);
+    const track = this.trackOf(clientId);
+    const all = this.stagesMetaFor(track).map(s=>s.id);
     if (S.clients[clientId]) S.clients[clientId].unlockedStages = all;
     await fbSet(`clients/${clientId}/unlockedStages`, all);
   },
@@ -579,6 +678,7 @@ function renderVideo(url) {
 // ROUTER
 // ================================================================
 let VIEW = 'loading', PARAMS = {};
+let ADMIN_TRACK = 'rp'; // 'rp' | 'team'
 let realtimeSub = null;
 let clientSyncSub = null;
 
@@ -809,7 +909,8 @@ function vClientDash() {
   const client = Data.client(sess?.clientId);
   if (!client) { Auth.logout(); go('login'); return ''; }
 
-  const stages = Data.stages();
+  const clientTrack = client.track || 'rp';
+  const stages = Data.stagesFor(clientTrack);
   const done = (client.completedStages||[]).length, total = stages.length;
   const pct = Math.round(done/total*100);
 
@@ -856,7 +957,7 @@ function vClientDash() {
           <div class="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center text-brand-600">${I.book}</div>
           <div>
             <div class="text-sm font-bold text-slate-900">УК «Консилиум»</div>
-            <div class="text-xs text-slate-400">${esc(client.name)}</div>
+            <div class="text-xs text-slate-400">${esc(client.name)} · ${clientTrack === 'team' ? 'Участник проекта' : 'Руководитель проектов'}</div>
           </div>
         </div>
         <button onclick="Auth.logout();go('login')" class="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 transition font-medium">${I.logout} Выйти</button>
@@ -879,7 +980,7 @@ function vClientDash() {
         </div>
         ${client.company?`<p class="text-brand-300 text-xs mt-3">${esc(client.company)}</p>`:''}
       </div>
-      <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Программа обучения</p>
+      <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">${clientTrack === 'team' ? 'Программа для команды' : 'Программа обучения'}</p>
       <div class="space-y-2.5">${cards}</div>
     </div>
   </div>`;
@@ -891,7 +992,8 @@ function vClientDash() {
 function vStage() {
   const sess = Auth.session();
   const client = Data.client(sess?.clientId);
-  const stage = Data.stage(PARAMS.stageId);
+  const clientTrack = client?.track || 'rp';
+  const stage = Data.stageFor(PARAMS.stageId, clientTrack);
   if (!client || !stage) { go('dashboard'); return ''; }
   const unlocked = (client.unlockedStages||[]).includes(stage.id);
   const completed = (client.completedStages||[]).includes(stage.id);
@@ -1145,12 +1247,23 @@ async function clearClientChat(clientId) {
 // ================================================================
 // VIEW — ADMIN DASHBOARD (real-time)
 // ================================================================
+function switchAdminTrack(track) {
+  ADMIN_TRACK = track;
+  render();
+}
+
 function vAdminDash() {
-  const clients = Data.clients();
-  const stages = Data.stages();
+  const allClients = Data.clients();
+  // Клиенты текущего трека (legacy без track → считаются 'rp')
+  const clients = allClients.filter(c => (c.track || 'rp') === ADMIN_TRACK);
+  const stages = Data.stagesFor(ADMIN_TRACK);
+
+  const rpCount = allClients.filter(c => (c.track || 'rp') === 'rp').length;
+  const teamCount = allClients.filter(c => c.track === 'team').length;
+  const onlineCount = clients.filter(c => Data.isOnline(c.id)).length;
 
   const clientCards = clients.length === 0
-    ? `<div class="text-center py-10 text-slate-400"><div class="text-4xl mb-3">👥</div><p class="text-sm">Нет клиентов. Добавьте первого!</p></div>`
+    ? `<div class="text-center py-10 text-slate-400"><div class="text-4xl mb-3">👥</div><p class="text-sm">Нет участников. Добавьте первого!</p></div>`
     : clients.map(c => {
         const done=(c.completedStages||[]).length, pct=Math.round(done/stages.length*100);
         const online = Data.isOnline(c.id);
@@ -1174,7 +1287,7 @@ function vAdminDash() {
               </button>
               <div class="text-right cursor-pointer" onclick="go('adminClient',{clientId:'${c.id}'})">
                 <p class="text-xl font-extrabold text-brand-600">${pct}%</p>
-                <p class="text-xs text-slate-400">${done}/${stages.length} этапов</p>
+                <p class="text-xs text-slate-400">${done}/${stages.length} уроков</p>
               </div>
             </div>
           </div>
@@ -1196,14 +1309,14 @@ function vAdminDash() {
         <span class="block w-4 h-0.5 bg-current rounded"></span>
         <span class="block w-4 h-0.5 bg-current rounded"></span>
       </div>
-      <div onclick="go('adminStage',{stageId:'${s.id}'})" class="w-9 h-9 rounded-lg ${s.videoUrl?'bg-brand-50 text-brand-600':'bg-slate-100 text-slate-400'} flex items-center justify-center flex-shrink-0 cursor-pointer">${I.vid}</div>
-      <div onclick="go('adminStage',{stageId:'${s.id}'})" class="flex-1 min-w-0 cursor-pointer">
+      <div onclick="go('adminStage',{stageId:'${s.id}',track:ADMIN_TRACK})" class="w-9 h-9 rounded-lg ${s.videoUrl?'bg-brand-50 text-brand-600':'bg-slate-100 text-slate-400'} flex items-center justify-center flex-shrink-0 cursor-pointer">${I.vid}</div>
+      <div onclick="go('adminStage',{stageId:'${s.id}',track:ADMIN_TRACK})" class="flex-1 min-w-0 cursor-pointer">
         <p class="text-sm font-semibold text-slate-800 truncate">${esc(s.title)}</p>
         <p class="text-xs text-slate-400">${esc(s.label)} · ${s.videoUrl?'✅ Видео есть':'⚠️ Видео нет'} · ${s.artifacts?.length||0} материалов</p>
       </div>
-      <button onclick="event.stopPropagation();openEditStageMeta('${s.id}')" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-brand-600 hover:bg-brand-50 transition" title="Переименовать">${I.edit}</button>
-      <button onclick="event.stopPropagation();openDeleteStage('${s.id}')" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition" title="Удалить этап">${I.trash}</button>
-      <span onclick="go('adminStage',{stageId:'${s.id}'})" class="text-slate-300 cursor-pointer flex-shrink-0">${I.arrow}</span>
+      <button onclick="event.stopPropagation();openEditStageMeta('${s.id}','${ADMIN_TRACK}')" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-brand-600 hover:bg-brand-50 transition" title="Переименовать">${I.edit}</button>
+      <button onclick="event.stopPropagation();openDeleteStage('${s.id}','${ADMIN_TRACK}')" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition" title="Удалить этап">${I.trash}</button>
+      <span onclick="go('adminStage',{stageId:'${s.id}',track:ADMIN_TRACK})" class="text-slate-300 cursor-pointer flex-shrink-0">${I.arrow}</span>
     </div>`).join('');
 
   return `
@@ -1230,13 +1343,29 @@ function vAdminDash() {
           <button onclick="Auth.logout();go('login')" class="text-brand-300 hover:text-white flex items-center gap-1 text-xs transition">${I.logout} Выйти</button>
         </div>
       </div>
+
+      <!-- Track tabs -->
+      <div class="max-w-3xl mx-auto px-4 pb-3 flex gap-2">
+        <button onclick="switchAdminTrack('rp')"
+          class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${ADMIN_TRACK === 'rp' ? 'bg-white text-brand-700' : 'bg-brand-700/60 text-brand-200 hover:bg-brand-600'}">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          Руководители проектов
+          <span class="px-1.5 py-0.5 rounded-full text-[10px] ${ADMIN_TRACK === 'rp' ? 'bg-brand-100 text-brand-700' : 'bg-brand-600 text-brand-200'}">${rpCount}</span>
+        </button>
+        <button onclick="switchAdminTrack('team')"
+          class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${ADMIN_TRACK === 'team' ? 'bg-white text-brand-700' : 'bg-brand-700/60 text-brand-200 hover:bg-brand-600'}">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Команда
+          <span class="px-1.5 py-0.5 rounded-full text-[10px] ${ADMIN_TRACK === 'team' ? 'bg-brand-100 text-brand-700' : 'bg-brand-600 text-brand-200'}">${teamCount}</span>
+        </button>
+      </div>
     </div>
     <div class="max-w-3xl mx-auto px-4 py-5 fi">
       <div class="grid grid-cols-3 gap-3 mb-6">
         ${[
-          ['Клиентов', clients.length, '👥', false],
-          ['В сети', clients.filter(c=>Data.isOnline(c.id)).length, '🟢', true],
-          ['Этапов', stages.length, '📚', false]
+          [ADMIN_TRACK === 'rp' ? 'Руков. проектов' : 'Участников', clients.length, ADMIN_TRACK === 'rp' ? '👤' : '👥', false],
+          ['В сети', onlineCount, '🟢', true],
+          [ADMIN_TRACK === 'rp' ? 'Этапов' : 'Уроков', stages.length, '📚', false]
         ].map(([label,val,emoji,isOnline])=>`
           <div class="bg-white rounded-2xl border ${isOnline && val > 0 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100'} p-4 text-center">
             <p class="text-3xl font-extrabold ${isOnline && val > 0 ? 'text-emerald-500' : 'text-brand-600'}">${val}</p>
@@ -1245,18 +1374,18 @@ function vAdminDash() {
       </div>
 
       <div class="flex items-center justify-between mb-3">
-        <p class="font-bold text-slate-800">Клиенты</p>
+        <p class="font-bold text-slate-800">${ADMIN_TRACK === 'rp' ? 'Руководители проектов' : 'Команда'}</p>
         <button onclick="document.getElementById('addModal').classList.remove('hidden')"
           class="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition">
-          ${I.plus} Добавить клиента
+          ${I.plus} Добавить участника
         </button>
       </div>
       <div class="space-y-2 mb-6">${clientCards}</div>
 
-      <p class="font-bold text-slate-800 mb-3">Этапы обучения</p>
+      <p class="font-bold text-slate-800 mb-3">${ADMIN_TRACK === 'rp' ? 'Этапы обучения РП' : 'Уроки для команды'}</p>
       <div class="space-y-2">${stageCards}</div>
       <button onclick="openAddStage()" class="w-full mt-3 py-3 border-2 border-dashed border-slate-200 hover:border-brand-400 rounded-xl text-sm text-slate-400 hover:text-brand-600 transition flex items-center justify-center gap-2">
-        ${I.plus} Добавить этап
+        ${I.plus} ${ADMIN_TRACK === 'rp' ? 'Добавить этап' : 'Добавить урок'}
       </button>
     </div>
   </div>
@@ -1337,9 +1466,20 @@ function vAdminDash() {
   <!-- Add Client Modal -->
   <div id="addModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm">
     <div class="bg-white rounded-3xl w-full max-w-sm p-6 fi">
-      <h3 class="text-lg font-extrabold text-slate-900 mb-4">Новый клиент</h3>
+      <h3 class="text-lg font-extrabold text-slate-900 mb-4">Новый участник</h3>
       <form id="addClientForm" class="space-y-3">
-        <input id="nc_name" type="text" placeholder="Имя руководителя проектов *"
+        <div class="flex gap-2 p-1 bg-slate-100 rounded-xl" id="trackSelector">
+          <button type="button" id="trackBtn_rp" onclick="selectNewClientTrack('rp')"
+            class="flex-1 py-2 rounded-lg text-xs font-bold transition bg-white text-brand-700 shadow-sm">
+            👤 Руководитель проектов
+          </button>
+          <button type="button" id="trackBtn_team" onclick="selectNewClientTrack('team')"
+            class="flex-1 py-2 rounded-lg text-xs font-bold transition text-slate-500">
+            👥 Участник команды
+          </button>
+        </div>
+        <input type="hidden" id="nc_track" value="rp">
+        <input id="nc_name" type="text" placeholder="Имя *"
           class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
         <input id="nc_company" type="text" placeholder="Компания"
           class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
@@ -1365,7 +1505,9 @@ function vAdminClient() {
   const client = Data.client(PARAMS.clientId);
   if (!client) { go('adminDashboard'); return ''; }
 
-  const stages = Data.stages();
+  const clientTrack = client.track || 'rp';
+  const stages = Data.stagesFor(clientTrack);
+  const trackLabel = clientTrack === 'rp' ? 'Руководитель проектов' : 'Участник команды';
   const done=(client.completedStages||[]).length, pct=Math.round(done/stages.length*100);
 
   const rows = stages.map(stage=>{
@@ -1398,7 +1540,7 @@ function vAdminClient() {
         <button onclick="go('adminDashboard')" class="w-9 h-9 rounded-xl bg-brand-600 hover:bg-brand-500 flex items-center justify-center transition">${I.back}</button>
         <div>
           <p class="font-bold text-sm">${esc(client.name)}</p>
-          <p class="text-brand-300 text-xs">${esc(client.company)||'—'} · @${esc(client.login)}</p>
+          <p class="text-brand-300 text-xs">${esc(client.company)||'—'} · @${esc(client.login)} · <span class="text-brand-200">${trackLabel}</span></p>
         </div>
       </div>
     </div>
@@ -1406,7 +1548,7 @@ function vAdminClient() {
       <div class="bg-white border border-slate-100 rounded-2xl p-5 mb-4">
         <div class="flex items-center justify-between mb-2">
           <p class="text-sm font-bold text-slate-700">Прогресс</p>
-          <p class="text-xl font-extrabold text-brand-600">${pct}% (${done}/${stages.length} этапов)</p>
+          <p class="text-xl font-extrabold text-brand-600">${pct}% (${done}/${stages.length} ${clientTrack === 'rp' ? 'этапов' : 'уроков'})</p>
         </div>
         <div class="bg-slate-100 rounded-full h-2 overflow-hidden">
           <div class="bg-brand-500 h-2 rounded-full" style="width:${pct}%"></div>
@@ -1419,7 +1561,7 @@ function vAdminClient() {
       <div class="bg-white border border-slate-100 rounded-2xl p-4 mb-5 flex flex-wrap gap-2">
         <button onclick="adminUnlockAll('${client.id}')"
           class="text-xs bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 px-4 py-2 rounded-xl font-semibold transition">
-          🔓 Открыть все этапы
+          🔓 Открыть ${clientTrack === 'rp' ? 'все этапы' : 'все уроки'}
         </button>
         <button onclick="adminResetClient('${client.id}')"
           class="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl font-semibold transition">
@@ -1435,7 +1577,7 @@ function vAdminClient() {
         </button>
       </div>
 
-      <p class="font-bold text-slate-800 mb-3 text-sm">Управление доступом к этапам</p>
+      <p class="font-bold text-slate-800 mb-3 text-sm">Управление доступом к ${clientTrack === 'rp' ? 'этапам' : 'урокам'}</p>
       <div class="space-y-2">${rows}</div>
     </div>
   </div>`;
@@ -1447,7 +1589,8 @@ function vAdminClient() {
 let artType = 'link';
 
 function vAdminStage() {
-  const stage = Data.stage(PARAMS.stageId);
+  const stageTrack = PARAMS.track || 'rp';
+  const stage = Data.stageFor(PARAMS.stageId, stageTrack);
   if (!stage) { go('adminDashboard'); return ''; }
 
   const artRows = (stage.artifacts||[]).map((a,idx)=>`
@@ -1459,7 +1602,7 @@ function vAdminStage() {
         <p class="text-sm font-semibold text-slate-800 truncate">${esc(a.name)}</p>
         <p class="text-xs text-slate-400">${a.type==='link'?'Ссылка':a.type==='text'?'Задание':'Файл'}</p>
       </div>
-      <button onclick="removeArtifact('${stage.id}',${idx})" class="text-slate-300 hover:text-red-500 transition">${I.trash}</button>
+      <button onclick="removeArtifact('${stage.id}',${idx},'${stageTrack}')" class="text-slate-300 hover:text-red-500 transition">${I.trash}</button>
     </div>`).join('');
 
   return `
@@ -1485,7 +1628,7 @@ function vAdminStage() {
             <input type="url" id="vurl_${stage.id}" value="${stage.videoUrl||''}"
               placeholder="https://youtube.com/watch?v=..."
               class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition">
-            <button onclick="saveVideoUrl('${stage.id}')"
+            <button onclick="saveVideoUrl('${stage.id}','${stageTrack}')"
               class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition whitespace-nowrap">Сохранить</button>
           </div>
         </div>
@@ -1498,7 +1641,7 @@ function vAdminStage() {
               <p class="text-sm font-semibold text-slate-600">Нажмите для загрузки</p>
               <p class="text-xs text-slate-400">MP4, WebM, MOV · до 100 МБ</p>
             </div>
-            <input type="file" accept="video/*" class="hidden" onchange="uploadVideoFile(event,'${stage.id}')">
+            <input type="file" accept="video/*" class="hidden" onchange="uploadVideoFile(event,'${stage.id}','${stageTrack}')">
           </label>
         </div>
       </div>
@@ -1552,7 +1695,7 @@ function vAdminStage() {
             <textarea id="artText" rows="4" placeholder="Задание для клиента по итогам просмотра видео..."
               class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm resize-none transition"></textarea>
           </div>
-          <button onclick="addArtifact('${stage.id}')"
+          <button onclick="addArtifact('${stage.id}','${stageTrack}')"
             class="mt-2.5 w-full bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-xl text-sm font-bold transition">
             Добавить материал
           </button>
@@ -1707,15 +1850,32 @@ function initLoginForm() {
   });
 }
 
+function selectNewClientTrack(track) {
+  document.getElementById('nc_track').value = track;
+  const btnRp = document.getElementById('trackBtn_rp');
+  const btnTeam = document.getElementById('trackBtn_team');
+  if (!btnRp || !btnTeam) return;
+  if (track === 'rp') {
+    btnRp.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition bg-white text-brand-700 shadow-sm';
+    btnTeam.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition text-slate-500';
+  } else {
+    btnTeam.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition bg-white text-brand-700 shadow-sm';
+    btnRp.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition text-slate-500';
+  }
+}
+
 function initAdminForms() {
   const form = document.getElementById('addClientForm');
   if (!form) return;
+  // Pre-select track based on current admin track tab
+  selectNewClientTrack(ADMIN_TRACK);
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const name=document.getElementById('nc_name').value.trim();
     const company=document.getElementById('nc_company').value.trim();
     const login=document.getElementById('nc_login').value.trim().toLowerCase();
     const pwd=document.getElementById('nc_pwd').value;
+    const track=document.getElementById('nc_track').value || 'rp';
     const err=document.getElementById('addClientErr');
     err.classList.add('hidden');
     if (!name||!login||!pwd) { err.textContent='Заполните обязательные поля'; err.classList.remove('hidden'); return; }
@@ -1724,10 +1884,10 @@ function initAdminForms() {
     const btn = form.querySelector('[type=submit]');
     btn.disabled=true; btn.textContent='Добавление...';
     try {
-      await Data.addClient(name, company, login, pwd);
+      await Data.addClient(name, company, login, pwd, track);
       document.getElementById('addModal').classList.add('hidden');
       form.reset();
-      toast(`Клиент ${esc(name)} добавлен!`);
+      toast(`Участник ${esc(name)} добавлен!`);
       render(); // сразу показать нового клиента
     } catch(ex) {
       err.textContent=ex.message||'Ошибка. Попробуйте ещё раз.';
@@ -1807,20 +1967,20 @@ async function adminDeleteClient(clientId) {
   catch(e) { toast('Ошибка. Проверьте подключение.', 'err'); }
 }
 
-async function saveVideoUrl(stageId) {
+async function saveVideoUrl(stageId, track='rp') {
   const url = document.getElementById(`vurl_${stageId}`).value.trim();
   try {
-    await Data.updateStageData(stageId, { videoUrl: url });
+    await Data.updateStageData(stageId, { videoUrl: url }, track);
     toast('Видео сохранено!'); render();
   } catch(e) { toast('Ошибка сохранения.', 'err'); }
 }
 
-async function uploadVideoFile(event, stageId) {
+async function uploadVideoFile(event, stageId, track='rp') {
   const file = event.target.files[0]; if (!file) return;
   if (file.size > 100*1024*1024) { toast('Файл >100 МБ. Используйте YouTube или Google Drive.','err'); return; }
   toast('Загрузка...');
   const reader = new FileReader();
-  reader.onload = async e => { await Data.updateStageData(stageId, { videoUrl: e.target.result }); toast('Видео загружено!'); render(); };
+  reader.onload = async e => { await Data.updateStageData(stageId, { videoUrl: e.target.result }, track); toast('Видео загружено!'); render(); };
   reader.onerror = () => toast('Ошибка загрузки','err');
   reader.readAsDataURL(file);
 }
@@ -1840,10 +2000,10 @@ function updateFileLbl() {
   if (f) document.getElementById('fileNameLabel').textContent=f.name;
 }
 
-async function addArtifact(stageId) {
+async function addArtifact(stageId, track='rp') {
   const name=document.getElementById('artName').value.trim();
   if (!name) { toast('Введите название','err'); return; }
-  const stage=Data.stage(stageId);
+  const stage=Data.stageFor(stageId, track);
   const arts=[...(stage.artifacts||[])];
   if (artType==='link') {
     const url=document.getElementById('artUrl').value.trim();
@@ -1862,14 +2022,14 @@ async function addArtifact(stageId) {
     if (!content) { toast('Введите текст','err'); return; }
     arts.push({ id:'a_'+Date.now(), type:'text', name, content });
   }
-  await Data.updateStageData(stageId, { artifacts: arts });
+  await Data.updateStageData(stageId, { artifacts: arts }, track);
   toast('Материал добавлен!'); render();
 }
 
-async function removeArtifact(stageId, idx) {
-  const stage=Data.stage(stageId);
+async function removeArtifact(stageId, idx, track='rp') {
+  const stage=Data.stageFor(stageId, track);
   const arts=[...(stage.artifacts||[])]; arts.splice(idx,1);
-  await Data.updateStageData(stageId, { artifacts: arts });
+  await Data.updateStageData(stageId, { artifacts: arts }, track);
   toast('Удалено'); render();
 }
 
@@ -2108,11 +2268,13 @@ function continueSetup() {
 
 // ---- Stage meta editing ----
 let _editingStageId = null;
+let _editingStageTrack = 'rp';
 
-function openEditStageMeta(stageId) {
-  const s = Data.stageMeta(stageId);
+function openEditStageMeta(stageId, track='rp') {
+  const s = Data.stageMetaFor(stageId, track);
   if (!s) return;
   _editingStageId = stageId;
+  _editingStageTrack = track;
   document.getElementById('editStageTitle').value = s.title || '';
   document.getElementById('editStageLabel').value = s.label || '';
   document.getElementById('editStageDuration').value = s.duration || '';
@@ -2130,7 +2292,7 @@ async function saveEditStageMeta() {
   const topics = topicsRaw.split('\n').map(t=>t.trim()).filter(Boolean);
   const questionHint = document.getElementById('editStageHint').value.trim();
   try {
-    await Data.updateStageMeta(_editingStageId, { title, label, duration, topics, questionHint });
+    await Data.updateStageMeta(_editingStageId, { title, label, duration, topics, questionHint }, _editingStageTrack);
     document.getElementById('editStageMetaModal').classList.add('hidden');
     render();
     toast('Этап обновлён ✓');
@@ -2157,13 +2319,13 @@ async function stageDrop(e, targetId) {
   e.currentTarget.classList.remove('border-brand-400','bg-brand-50/30');
   document.querySelectorAll('.stage-card').forEach(c=>c.classList.remove('opacity-50'));
   if (!_dragSrcId || _dragSrcId === targetId) return;
-  const ordered = Data.stagesMeta().map(s=>s.id);
+  const ordered = Data.stagesMetaFor(ADMIN_TRACK).map(s=>s.id);
   const srcIdx = ordered.indexOf(_dragSrcId);
   const tgtIdx = ordered.indexOf(targetId);
   ordered.splice(srcIdx, 1);
   ordered.splice(tgtIdx, 0, _dragSrcId);
   try {
-    await Data.reorderStages(ordered);
+    await Data.reorderStages(ordered, ADMIN_TRACK);
     render();
     toast('Порядок сохранён ✓');
   } catch(err) { toast('Ошибка: ' + err.message, 'err'); }
@@ -2299,17 +2461,19 @@ async function deleteAdminFeedback(stageId, clientId) {
 }
 
 let _deletingStageId = null;
-function openDeleteStage(stageId) {
-  const s = Data.stageMeta(stageId);
+let _deletingStageTrack = 'rp';
+function openDeleteStage(stageId, track='rp') {
+  const s = Data.stageMetaFor(stageId, track);
   if (!s) return;
   _deletingStageId = stageId;
+  _deletingStageTrack = track;
   document.getElementById('deleteStageTitle').textContent = `«${s.title}»`;
   document.getElementById('deleteStageModal').classList.remove('hidden');
 }
 async function confirmDeleteStage() {
   if (!_deletingStageId) return;
   try {
-    await Data.deleteStage(_deletingStageId);
+    await Data.deleteStage(_deletingStageId, _deletingStageTrack);
     document.getElementById('deleteStageModal').classList.add('hidden');
     render();
     toast('Этап удалён');
@@ -2330,10 +2494,10 @@ async function saveAddStage() {
   err.classList.add('hidden');
   if (!title || !label) { err.textContent='Заполните все поля'; err.classList.remove('hidden'); return; }
   try {
-    await Data.addStage(title, label);
+    await Data.addStage(title, label, ADMIN_TRACK);
     document.getElementById('addStageModal').classList.add('hidden');
     render();
-    toast('Этап добавлен ✓');
+    toast(ADMIN_TRACK === 'rp' ? 'Этап добавлен ✓' : 'Урок добавлен ✓');
   } catch(e) { err.textContent = e.message; err.classList.remove('hidden'); }
 }
 
