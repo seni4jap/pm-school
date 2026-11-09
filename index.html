@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>УК "Консилиум" — Обучение Проектной методологии</title>
+  <title>Обучение проектному управлению</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -40,7 +40,7 @@ const SK = { CONFIG:'uk_fb_config', SESSION:'uk_session', ADMIN_BACKUP:'uk_admin
 
 const DEFAULT_STAGES = [
   { id:'intro',  order:0, label:'Вводное видео', title:'Введение в Проектную методологию',
-    topics:['Что такое проектная методология','Принципы работы УК «Консилиум»','Роль внутреннего руководителя проектов'],
+    topics:['Что такое проектная методология','Принципы проектной работы','Роль внутреннего руководителя проектов'],
     duration:'47 минут', videoUrl:'', artifacts:[] },
   { id:'stage0', order:1, label:'Этап 0', title:'Обзор программы обучения',
     topics:['Как будет проходить обучение','Этапы и ожидаемые результаты','Что вас ждёт впереди'],
@@ -873,8 +873,8 @@ function vLogin() {
     <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm fi">
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center w-16 h-16 bg-brand-100 rounded-2xl mb-4 text-brand-600">${I.book}</div>
-        <h1 class="text-2xl font-extrabold text-slate-900">УК «Консилиум»</h1>
-        <p class="text-slate-500 mt-1 text-sm">Обучение Проектной методологии</p>
+        <h1 class="text-2xl font-extrabold text-slate-900">Обучение проектному управлению</h1>
+        <p class="text-slate-500 mt-1 text-sm">Проектная методология на практике</p>
       </div>
       <form id="loginForm" class="space-y-4">
         <div>
@@ -958,7 +958,7 @@ function vClientDash() {
         <div class="flex items-center gap-2.5">
           <div class="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center text-brand-600">${I.book}</div>
           <div>
-            <div class="text-sm font-bold text-slate-900">УК «Консилиум»</div>
+            <div class="text-sm font-bold text-slate-900">Обучение проектному управлению</div>
             <div class="text-xs text-slate-400">${esc(client.name)} · ${clientTrack === 'team' ? 'Участник проекта' : 'Руководитель проектов'}</div>
           </div>
         </div>
